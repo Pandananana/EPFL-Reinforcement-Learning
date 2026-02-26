@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: nbstripout-noisy-fields-only
+        name: Strip noisy Jupyter metadata (keep outputs)
+        entry: uv run nbstripout --keep-output --extra-keys "metadata.widgets cell.metadata.execution output.metadata output.execution_count"
+        language: system
+        types_or: [jupyter]
