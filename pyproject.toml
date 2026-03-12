@@ -10,6 +10,7 @@ dependencies = [
     "numpy>=2.4.2",
     "scipy>=1.17.1",
     "torch>=2.10.0",
+    "tqdm>=4.67.3",
 ]
 
 [dependency-groups]
