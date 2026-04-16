@@ -7,7 +7,6 @@ requires-python = ">=3.13"
 dependencies = [
     "jupyter>=1.1.1",
     "matplotlib>=3.10.8",
-    "nbdime>=4.0.4",
     "numpy>=2.4.2",
     "scipy>=1.17.1",
     "torch>=2.10.0",
