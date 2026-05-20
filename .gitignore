@@ -1,3 +1,16 @@
 __pycache__
 .DS_Store
 **/slides
+results/
+plots/
+models/
+*.pdf
+sweeps.db
+sweeps.db-journal
+*.log
+*.pyc
+.venv/
+venv/
+.env
+.idea/
+.vscode/
