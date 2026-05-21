@@ -31,8 +31,7 @@ class TrainConfig:
     gamma: float = 0.99
     tau: float = 0.005
     lr: float = 3e-4
-    auto_alpha: bool = True
-    init_alpha: float = 0.2
+    alpha: float = 0.2
     # Plumbing:
     device: str = "cpu"
     log_path: str | None = None
@@ -94,8 +93,7 @@ def train(
         gamma=cfg.gamma,
         tau=cfg.tau,
         lr=cfg.lr,
-        auto_alpha=cfg.auto_alpha,
-        init_alpha=cfg.init_alpha,
+        alpha=cfg.alpha,
         device=cfg.device,
     )
     buffer = ReplayBuffer(cfg.buffer_size, obs_dim, act_dim, device=cfg.device)
@@ -139,7 +137,7 @@ def train(
                 print(
                     f"[{cfg.env_name} seed={cfg.seed}] "
                     f"step={step:>6} eval={eval_ret:>8.2f} ± {eval_std:>6.2f} "
-                    f"alpha={agent.alpha.item():.3f}"
+                    f"alpha={agent.alpha:.3f}"
                 )
             if progress_callback is not None:
                 if progress_callback(step, eval_ret):

@@ -39,6 +39,11 @@ def make_objective(env_name: str, total_steps: int, seed: int):
             batch_size=trial.suggest_categorical("batch_size", [128, 256, 512]),
             hidden_dim=trial.suggest_categorical("hidden_dim", [64, 128, 256]),
             gamma=trial.suggest_float("gamma", 0.95, 0.999),
+            # Fixed temperature is THE knob in classic SAC: equivalent to the
+            # paper's reward scale (alpha = 1 / reward_scale). The paper's
+            # sensitivity sweep covers reward scales ~1-300, so cover a wide
+            # log range here.
+            alpha=trial.suggest_float("alpha", 1e-2, 2.0, log=True),
             verbose=False,
         )
 
