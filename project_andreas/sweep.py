@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue
 from dataclasses import asdict
 
 import numpy as np
@@ -22,6 +23,10 @@ from optuna.samplers import TPESampler
 
 from train import TrainConfig, train
 
+# Worker threads grab a position from here so each in-flight trial gets its own
+# tqdm row below Optuna's outer trial bar (which sits at position 0).
+_position_queue: queue.Queue[int] = queue.Queue()
+
 DEFAULT_TRIAL_BUDGET = {
     "Pendulum-v1": 15_000,
     "MountainCarContinuous-v0": 40_000,
@@ -30,39 +35,45 @@ DEFAULT_TRIAL_BUDGET = {
 
 def make_objective(env_name: str, total_steps: int, seed: int):
     def objective(trial: optuna.Trial) -> float:
-        cfg = TrainConfig(
-            env_name=env_name,
-            seed=seed,
-            total_steps=total_steps,
-            lr=trial.suggest_float("lr", 1e-5, 1e-3, log=True),
-            tau=trial.suggest_float("tau", 1e-3, 5e-2, log=True),
-            batch_size=trial.suggest_categorical("batch_size", [128, 256, 512]),
-            hidden_dim=trial.suggest_categorical("hidden_dim", [64, 128, 256]),
-            gamma=trial.suggest_float("gamma", 0.95, 0.999),
-            # Fixed temperature is THE knob in classic SAC: equivalent to the
-            # paper's reward scale (alpha = 1 / reward_scale). The paper's
-            # sensitivity sweep covers reward scales ~1-300, so cover a wide
-            # log range here.
-            alpha=trial.suggest_float("alpha", 1e-2, 2.0, log=True),
-            verbose=False,
-        )
-
-        eval_returns: list[float] = []
-
-        def cb(step: int, eval_ret: float) -> bool:
-            eval_returns.append(eval_ret)
-            trial.report(eval_ret, step)
-            return trial.should_prune()
-
+        position = _position_queue.get()
         try:
-            train(cfg, progress_callback=cb)
-        except optuna.TrialPruned:
-            raise
+            cfg = TrainConfig(
+                env_name=env_name,
+                seed=seed,
+                total_steps=total_steps,
+                lr=trial.suggest_float("lr", 1e-5, 1e-3, log=True),
+                tau=trial.suggest_float("tau", 1e-3, 5e-2, log=True),
+                batch_size=trial.suggest_categorical("batch_size", [128, 256, 512]),
+                hidden_dim=trial.suggest_categorical("hidden_dim", [64, 128, 256]),
+                gamma=trial.suggest_float("gamma", 0.95, 0.999),
+                # Fixed temperature is THE knob in classic SAC: equivalent to the
+                # paper's reward scale (alpha = 1 / reward_scale). The paper's
+                # sensitivity sweep covers reward scales ~1-300, so cover a wide
+                # log range here.
+                alpha=trial.suggest_float("alpha", 1e-2, 2.0, log=True),
+                verbose=False,
+                progress_position=position,
+                progress_desc=f"trial {trial.number}",
+            )
 
-        if not eval_returns:
-            return -1e9
-        # Score = mean of the last few evals (smooths out single-eval noise).
-        return float(np.mean(eval_returns[-5:]))
+            eval_returns: list[float] = []
+
+            def cb(step: int, eval_ret: float) -> bool:
+                eval_returns.append(eval_ret)
+                trial.report(eval_ret, step)
+                return trial.should_prune()
+
+            try:
+                train(cfg, progress_callback=cb)
+            except optuna.TrialPruned:
+                raise
+
+            if not eval_returns:
+                return -1e9
+            # Score = mean of the last few evals (smooths out single-eval noise).
+            return float(np.mean(eval_returns[-5:]))
+        finally:
+            _position_queue.put(position)
 
     return objective
 
@@ -94,6 +105,13 @@ def run_sweep(
         sampler=sampler,
         pruner=pruner,
     )
+
+    # Slots 1..n_jobs sit below Optuna's outer trial bar (position 0). Drain
+    # any leftovers from a previous run in the same interpreter first.
+    while not _position_queue.empty():
+        _position_queue.get_nowait()
+    for i in range(1, n_jobs + 1):
+        _position_queue.put(i)
 
     obj = make_objective(env_name, total_steps, seed=seed)
     study.optimize(obj, n_trials=n_trials, n_jobs=n_jobs, show_progress_bar=True)

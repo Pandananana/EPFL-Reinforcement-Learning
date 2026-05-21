@@ -10,6 +10,7 @@ from typing import Callable
 import gymnasium as gym
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 
 from sac import SAC, ReplayBuffer
 
@@ -37,6 +38,10 @@ class TrainConfig:
     log_path: str | None = None
     checkpoint_path: str | None = None
     verbose: bool = False
+    # When set, render a per-step tqdm bar at this terminal row. Callers running
+    # parallel trials hand out unique positions so the bars stack.
+    progress_position: int | None = None
+    progress_desc: str | None = None
 
 
 def _make_env(env_name: str, seed: int):
@@ -103,6 +108,16 @@ def train(
     ep_ret, ep_len = 0.0, 0
     t0 = time.time()
 
+    pbar: tqdm | None = None
+    if cfg.progress_position is not None:
+        pbar = tqdm(
+            total=cfg.total_steps,
+            desc=cfg.progress_desc or f"{cfg.env_name} seed={cfg.seed}",
+            position=cfg.progress_position,
+            leave=False,
+            dynamic_ncols=True,
+        )
+
     for step in range(1, cfg.total_steps + 1):
         if step < cfg.start_steps:
             a = env.action_space.sample()
@@ -134,14 +149,24 @@ def train(
             }
             log_rows.append(row)
             if cfg.verbose:
-                print(
+                msg = (
                     f"[{cfg.env_name} seed={cfg.seed}] "
                     f"step={step:>6} eval={eval_ret:>8.2f} ± {eval_std:>6.2f} "
                     f"alpha={agent.alpha:.3f}"
                 )
+                # tqdm.write keeps the bar intact when other bars share the screen.
+                (tqdm.write if pbar is not None else print)(msg)
+            if pbar is not None:
+                pbar.set_postfix_str(f"eval={eval_ret:.1f}")
             if progress_callback is not None:
                 if progress_callback(step, eval_ret):
                     break
+
+        if pbar is not None:
+            pbar.update(1)
+
+    if pbar is not None:
+        pbar.close()
 
     env.close()
     eval_env.close()
