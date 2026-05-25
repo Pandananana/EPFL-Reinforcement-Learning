@@ -1,8 +1,6 @@
 __pycache__
 .DS_Store
 **/slides
-results/
-plots/
 models/
 *.pdf
 sweeps.db

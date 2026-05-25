@@ -1,0 +1,15 @@
+{
+  "env_name": "MountainCarContinuous-v0",
+  "best_value": 95.47958160960694,
+  "best_params": {
+    "lr": 0.00021276373380390198,
+    "tau": 0.028408285070337276,
+    "batch_size": 128,
+    "hidden_dim": 256,
+    "gamma": 0.999,
+    "alpha": 0.10975079190815488,
+    "warmup_action_repeat": 10
+  },
+  "n_trials": 143,
+  "search_total_steps": 40000
+}
