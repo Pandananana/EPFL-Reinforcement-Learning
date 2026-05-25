@@ -3,6 +3,10 @@
 Search phase: 1 seed per trial (fast). The follow-up validation with 3 seeds for
 the final report lives in final_runs.py.
 
+Per-env search spaces live in `SUGGEST_PARAMS`. MCC needs two extra knobs that
+Pendulum doesn't (gamma very close to 1, and a warmup action repeat) -- see
+train.py for why iid random warmup fails on momentum-dominated envs.
+
 n_jobs default tuned for an M4 MacBook Air (passive cooling, 10 cores). Each
 trial runs PyTorch with 1 OMP thread, so n_jobs=4 keeps 4 P-cores busy without
 thermal throttling. Crank it up on better hardware.
@@ -13,7 +17,7 @@ import argparse
 import json
 import os
 import queue
-from dataclasses import asdict
+from typing import Callable
 
 import numpy as np
 import optuna
@@ -33,27 +37,68 @@ DEFAULT_TRIAL_BUDGET = {
 }
 
 
+def _suggest_pendulum(trial: optuna.Trial) -> dict:
+    return dict(
+        lr=trial.suggest_float("lr", 1e-5, 1e-3, log=True),
+        tau=trial.suggest_float("tau", 1e-3, 5e-2, log=True),
+        batch_size=trial.suggest_categorical("batch_size", [128, 256, 512]),
+        hidden_dim=trial.suggest_categorical("hidden_dim", [64, 128, 256]),
+        gamma=trial.suggest_float("gamma", 0.95, 0.999),
+        # Fixed temperature is THE knob in classic SAC: equivalent to the
+        # paper's reward scale (alpha = 1 / reward_scale). The paper's
+        # sensitivity sweep covers reward scales ~1-300, so cover a wide
+        # log range here.
+        alpha=trial.suggest_float("alpha", 1e-2, 2.0, log=True),
+    )
+
+
+def _suggest_mcc(trial: optuna.Trial) -> dict:
+    return dict(
+        lr=trial.suggest_float("lr", 1e-5, 1e-3, log=True),
+        tau=trial.suggest_float("tau", 1e-3, 5e-2, log=True),
+        batch_size=trial.suggest_categorical("batch_size", [128, 256, 512]),
+        hidden_dim=trial.suggest_categorical("hidden_dim", [64, 128, 256]),
+        # MCC's +100 sparse goal reward arrives ~500 steps deep. At gamma=0.99
+        # it discounts to ~0.66 and gets dominated by the action-energy
+        # penalty. Search in (1-gamma) log space via well-chosen categoricals.
+        gamma=trial.suggest_categorical("gamma", [0.99, 0.995, 0.999, 0.9995, 0.9999, 0.99995]),
+        alpha=trial.suggest_float("alpha", 1e-2, 2.0, log=True),
+        # Per-step iid uniform warmup actions average out and never reach the
+        # goal on MCC, so the buffer never sees +100. K>=5 builds enough
+        # momentum during warmup. K=1 is included as a control (those trials
+        # should die fast under the pruner).
+        warmup_action_repeat=trial.suggest_categorical(
+            "warmup_action_repeat", [1, 5, 10, 20]
+        ),
+    )
+
+
+SUGGEST_PARAMS: dict[str, Callable[[optuna.Trial], dict]] = {
+    "Pendulum-v1": _suggest_pendulum,
+    "MountainCarContinuous-v0": _suggest_mcc,
+}
+
+
 def make_objective(env_name: str, total_steps: int, seed: int):
+    suggest = SUGGEST_PARAMS.get(env_name)
+    if suggest is None:
+        raise KeyError(
+            f"No sweep search space registered for env {env_name!r}. "
+            f"Add one to SUGGEST_PARAMS in sweep.py. Known: {list(SUGGEST_PARAMS)}"
+        )
+
     def objective(trial: optuna.Trial) -> float:
         position = _position_queue.get()
         try:
+            params = suggest(trial)
             cfg = TrainConfig(
                 env_name=env_name,
                 seed=seed,
                 total_steps=total_steps,
-                lr=trial.suggest_float("lr", 1e-5, 1e-3, log=True),
-                tau=trial.suggest_float("tau", 1e-3, 5e-2, log=True),
-                batch_size=trial.suggest_categorical("batch_size", [128, 256, 512]),
-                hidden_dim=trial.suggest_categorical("hidden_dim", [64, 128, 256]),
-                gamma=trial.suggest_float("gamma", 0.95, 0.999),
-                # Fixed temperature is THE knob in classic SAC: equivalent to the
-                # paper's reward scale (alpha = 1 / reward_scale). The paper's
-                # sensitivity sweep covers reward scales ~1-300, so cover a wide
-                # log range here.
-                alpha=trial.suggest_float("alpha", 1e-2, 2.0, log=True),
                 verbose=False,
                 progress_position=position,
                 progress_desc=f"trial {trial.number}",
+                **params,
             )
 
             eval_returns: list[float] = []
