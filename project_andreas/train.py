@@ -4,15 +4,14 @@ from __future__ import annotations
 import csv
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable
 
 import gymnasium as gym
 import numpy as np
 import torch
-from tqdm.auto import tqdm
-
 from sac import SAC, ReplayBuffer
+from tqdm.auto import tqdm
 
 
 @dataclass
@@ -20,8 +19,16 @@ class TrainConfig:
     env_name: str = "Pendulum-v1"
     seed: int = 0
     total_steps: int = 30_000
-    start_steps: int = 1_000          # uniform-random actions before policy kicks in
+    start_steps: int = 10_000         # uniform-random actions before policy kicks in
     update_after: int = 1_000         # don't train until buffer has some data
+    # Repeat each warmup random action for this many env steps. K=1 = per-step
+    # iid uniform (paper default). K>1 keeps actions temporally correlated during
+    # warmup, which is necessary on momentum-dominated envs like
+    # MountainCarContinuous: iid random forces average to ~0 and the car never
+    # builds enough velocity to reach the goal, so the buffer never sees a
+    # positive reward and the policy collapses to "do nothing". K=10 makes
+    # warmup explore the full velocity range. Does not change the SAC algorithm.
+    warmup_action_repeat: int = 1
     update_every: int = 1             # one gradient step per env step
     eval_every: int = 1_000
     n_eval_episodes: int = 5
@@ -107,6 +114,10 @@ def train(
     obs, _ = env.reset(seed=cfg.seed)
     ep_ret, ep_len = 0.0, 0
     t0 = time.time()
+    warmup_a: np.ndarray | None = None
+    warmup_a_left: int = 0
+    best_eval = -float("inf")
+    best_step = 0
 
     pbar: tqdm | None = None
     if cfg.progress_position is not None:
@@ -120,7 +131,11 @@ def train(
 
     for step in range(1, cfg.total_steps + 1):
         if step < cfg.start_steps:
-            a = env.action_space.sample()
+            if warmup_a_left == 0:
+                warmup_a = env.action_space.sample()
+                warmup_a_left = cfg.warmup_action_repeat
+            a = warmup_a
+            warmup_a_left -= 1
         else:
             a = agent.act(obs)
 
@@ -134,6 +149,7 @@ def train(
         if term or trunc:
             obs, _ = env.reset()
             ep_ret, ep_len = 0.0, 0
+            warmup_a_left = 0  # fresh random action at start of next episode
 
         if step >= cfg.update_after and step % cfg.update_every == 0:
             for _ in range(cfg.update_every):
@@ -158,6 +174,27 @@ def train(
                 (tqdm.write if pbar is not None else print)(msg)
             if pbar is not None:
                 pbar.set_postfix_str(f"eval={eval_ret:.1f}")
+            # Save the best-eval checkpoint. SAC can suffer from policy collapse
+            # late in training (especially on MCC with gamma close to 1, where Q
+            # targets are large and unstable); keeping the best snapshot makes
+            # eval reproducible regardless of how the curve degrades later.
+            if cfg.checkpoint_path is not None and eval_ret > best_eval:
+                best_eval = eval_ret
+                best_step = step
+                os.makedirs(os.path.dirname(cfg.checkpoint_path) or ".", exist_ok=True)
+                agent.save(
+                    cfg.checkpoint_path,
+                    extra={
+                        "env_name": cfg.env_name,
+                        "seed": cfg.seed,
+                        "hidden_dim": cfg.hidden_dim,
+                        "obs_dim": obs_dim,
+                        "act_dim": act_dim,
+                        "act_limit": act_limit,
+                        "best_eval": best_eval,
+                        "best_step": best_step,
+                    },
+                )
             if progress_callback is not None:
                 if progress_callback(step, eval_ret):
                     break
@@ -180,18 +217,10 @@ def train(
             writer.writeheader()
             writer.writerows(log_rows)
 
-    if cfg.checkpoint_path is not None:
-        os.makedirs(os.path.dirname(cfg.checkpoint_path) or ".", exist_ok=True)
-        agent.save(
-            cfg.checkpoint_path,
-            extra={
-                "env_name": cfg.env_name,
-                "seed": cfg.seed,
-                "hidden_dim": cfg.hidden_dim,
-                "obs_dim": obs_dim,
-                "act_dim": act_dim,
-                "act_limit": act_limit,
-            },
+    if cfg.checkpoint_path is not None and cfg.verbose:
+        print(
+            f"[{cfg.env_name} seed={cfg.seed}] "
+            f"best eval={best_eval:.2f} at step={best_step} -> {cfg.checkpoint_path}"
         )
 
     return log_rows
