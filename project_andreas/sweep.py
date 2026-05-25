@@ -7,14 +7,19 @@ Per-env search spaces live in `SUGGEST_PARAMS`. MCC needs two extra knobs that
 Pendulum doesn't (gamma very close to 1, and a warmup action repeat) -- see
 train.py for why iid random warmup fails on momentum-dominated envs.
 
-n_jobs default tuned for an M4 MacBook Air (passive cooling, 10 cores). Each
-trial runs PyTorch with 1 OMP thread, so n_jobs=4 keeps 4 P-cores busy without
-thermal throttling. Crank it up on better hardware.
+Parallelism is process-based: n_jobs>1 fans out to that many spawn subprocesses,
+each running n_jobs=1 internally and coordinating via the shared SQLite study
+(MaxTrialsCallback stops every worker once the global trial budget is met).
+Threads don't work for this workload -- the GIL serializes env stepping and
+replay sampling, so Optuna's thread-based n_jobs caps total CPU at ~3x even on
+a 32-core box. Default n_jobs=4 is tuned for an M4 Air; on a workstation set
+it to ~physical cores (not SMT threads).
 """
 from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing as mp
 import os
 import queue
 from typing import Callable
@@ -24,11 +29,14 @@ import optuna
 import torch
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
+from optuna.study import MaxTrialsCallback
+from optuna.trial import TrialState
 
 from train import TrainConfig, train
 
-# Worker threads grab a position from here so each in-flight trial gets its own
-# tqdm row below Optuna's outer trial bar (which sits at position 0).
+# Each worker process owns one tqdm row (single in-flight trial per process).
+# Kept as a queue so make_objective stays unchanged across single- and
+# multi-process paths.
 _position_queue: queue.Queue[int] = queue.Queue()
 
 DEFAULT_TRIAL_BUDGET = {
@@ -123,6 +131,53 @@ def make_objective(env_name: str, total_steps: int, seed: int):
     return objective
 
 
+def _run_worker(
+    worker_idx: int,
+    env_name: str,
+    total_steps: int,
+    n_trials_total: int,
+    seed: int,
+    study_name: str,
+    storage: str,
+) -> None:
+    """Single-process worker. Loads the shared study and runs trials until the
+    global budget is exhausted (MaxTrialsCallback polls storage)."""
+    # Belt-and-braces: keep each process to one BLAS/OMP thread so 16 workers
+    # don't each spawn 16 OMP threads and trash each other.
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    torch.set_num_threads(1)
+
+    # Per-worker sampler seed so the TPE samplers don't propose identical
+    # trials in lockstep before they've each seen enough history.
+    sampler = TPESampler(seed=seed + worker_idx, n_startup_trials=5)
+    pruner = MedianPruner(n_warmup_steps=5, n_startup_trials=5)
+    study = optuna.create_study(
+        direction="maximize",
+        study_name=study_name,
+        storage=storage,
+        load_if_exists=True,
+        sampler=sampler,
+        pruner=pruner,
+    )
+
+    _position_queue.put(worker_idx + 1)
+
+    obj = make_objective(env_name, total_steps, seed=seed)
+    study.optimize(
+        obj,
+        n_trials=n_trials_total,
+        n_jobs=1,
+        callbacks=[
+            MaxTrialsCallback(
+                n_trials_total,
+                states=(TrialState.COMPLETE, TrialState.PRUNED, TrialState.FAIL),
+            )
+        ],
+        show_progress_bar=False,
+    )
+
+
 def run_sweep(
     env_name: str,
     n_trials: int,
@@ -135,13 +190,11 @@ def run_sweep(
     total_steps = total_steps or DEFAULT_TRIAL_BUDGET.get(env_name, 30_000)
     study_name = study_name or f"sac_{env_name}"
 
-    # Important on macOS with multi-thread Optuna: pin PyTorch to 1 thread so
-    # the OMP pools across worker threads don't fight each other.
-    torch.set_num_threads(1)
-
     sampler = TPESampler(seed=seed, n_startup_trials=5)
     pruner = MedianPruner(n_warmup_steps=5, n_startup_trials=5)
 
+    # Materialize the study in storage upfront so workers can load_if_exists
+    # without racing on creation.
     study = optuna.create_study(
         direction="maximize",
         study_name=study_name,
@@ -151,15 +204,38 @@ def run_sweep(
         pruner=pruner,
     )
 
-    # Slots 1..n_jobs sit below Optuna's outer trial bar (position 0). Drain
-    # any leftovers from a previous run in the same interpreter first.
-    while not _position_queue.empty():
-        _position_queue.get_nowait()
-    for i in range(1, n_jobs + 1):
-        _position_queue.put(i)
-
-    obj = make_objective(env_name, total_steps, seed=seed)
-    study.optimize(obj, n_trials=n_trials, n_jobs=n_jobs, show_progress_bar=True)
+    if n_jobs <= 1:
+        # Single-process inline path (default for laptops).
+        torch.set_num_threads(1)
+        while not _position_queue.empty():
+            _position_queue.get_nowait()
+        _position_queue.put(1)
+        obj = make_objective(env_name, total_steps, seed=seed)
+        study.optimize(obj, n_trials=n_trials, n_jobs=1, show_progress_bar=True)
+    else:
+        # Process fan-out. `spawn` (not fork) is required because PyTorch's
+        # internal thread pools don't survive fork cleanly.
+        ctx = mp.get_context("spawn")
+        procs = [
+            ctx.Process(
+                target=_run_worker,
+                args=(i, env_name, total_steps, n_trials, seed, study_name, storage),
+            )
+            for i in range(n_jobs)
+        ]
+        for p in procs:
+            p.start()
+        try:
+            for p in procs:
+                p.join()
+        except KeyboardInterrupt:
+            for p in procs:
+                p.terminate()
+            for p in procs:
+                p.join()
+            raise
+        # Re-read the study so best_value/best_params reflect worker results.
+        study = optuna.load_study(study_name=study_name, storage=storage)
 
     print()
     print(f"Best value: {study.best_value:.2f}")
@@ -195,7 +271,11 @@ def parse_args() -> argparse.Namespace:
         "--n-jobs",
         type=int,
         default=4,
-        help="Parallel trials. 4 is the sweet spot for an M4 Air; bump higher on workstations.",
+        help=(
+            "Parallel worker processes (NOT threads). Each worker runs single-threaded "
+            "and shares trial state via the SQLite study. 4 fits an M4 Air; set to ~physical "
+            "cores on a workstation (e.g. 16 on a 32-thread EPYC -- SMT siblings fight for FP units)."
+        ),
     )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--study-name", default=None)
