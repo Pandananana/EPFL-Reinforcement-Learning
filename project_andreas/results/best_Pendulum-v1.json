@@ -1,0 +1,14 @@
+{
+  "env_name": "Pendulum-v1",
+  "best_value": -236.69191024225097,
+  "best_params": {
+    "lr": 0.00012635598137381655,
+    "tau": 0.01596327183693649,
+    "batch_size": 512,
+    "hidden_dim": 64,
+    "gamma": 0.9525218929617406,
+    "alpha": 0.10335147345344574
+  },
+  "n_trials": 4,
+  "search_total_steps": 15000
+}
