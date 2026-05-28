@@ -26,11 +26,11 @@ from train import TrainConfig, train
 
 
 def cmd_smoke(args):
-    print("Smoke test: 5k steps on Pendulum-v1, default hyperparams.")
+    print("Smoke test: 25 episodes on Pendulum-v1, default hyperparams.")
     train(
         TrainConfig(
             env_name="Pendulum-v1",
-            total_steps=5_000,
+            total_episodes=25,
             eval_every=500,
             verbose=True,
         )
@@ -42,7 +42,7 @@ def cmd_sweep(args):
     run_sweep(
         env_name=args.env,
         n_trials=args.n_trials,
-        total_steps=args.total_steps,
+        total_episodes=args.total_episodes,
         n_jobs=args.n_jobs,
         seed=args.seed,
         study_name=None,
@@ -54,7 +54,7 @@ def cmd_final(args):
     run_final(
         env_name=args.env,
         seeds=args.seeds,
-        total_steps=args.total_steps,
+        total_episodes=args.total_episodes,
         params_path=None,
         n_jobs=args.n_jobs,
     )
@@ -94,7 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("sweep", help="Run Optuna hyperparameter sweep.")
     sp.add_argument("--env", default="Pendulum-v1")
     sp.add_argument("--n-trials", type=int, default=30)
-    sp.add_argument("--total-steps", type=int, default=None)
+    sp.add_argument("--total-episodes", type=int, default=None)
     sp.add_argument("--n-jobs", type=int, default=4)
     sp.add_argument("--seed", type=int, default=0)
     sp.set_defaults(func=cmd_sweep)
@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("final", help="Multi-seed runs with the swept best params.")
     sp.add_argument("--env", default="Pendulum-v1")
     sp.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
-    sp.add_argument("--total-steps", type=int, default=None)
+    sp.add_argument("--total-episodes", type=int, default=None)
     sp.add_argument("--n-jobs", type=int, default=3)
     sp.set_defaults(func=cmd_final)
 
@@ -125,7 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("all", help="Run sweep + final + plot for one env.")
     sp.add_argument("--env", default="Pendulum-v1")
     sp.add_argument("--n-trials", type=int, default=30)
-    sp.add_argument("--total-steps", type=int, default=None)
+    sp.add_argument("--total-episodes", type=int, default=None)
     sp.add_argument("--n-jobs", type=int, default=4)
     sp.add_argument("--seed", type=int, default=0)
     sp.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])

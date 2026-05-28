@@ -15,25 +15,28 @@ def load_seed_csvs(env_name: str, results_dir: str = "results"):
     if not paths:
         raise FileNotFoundError(f"No CSVs found for {env_name} in {results_dir}/")
 
-    steps_ref = None
-    returns_per_seed = []
+    per_seed_episodes: list[list[int]] = []
+    per_seed_returns: list[list[float]] = []
     for p in paths:
-        steps, rets = [], []
+        episodes, rets = [], []
         with open(p) as f:
             for row in csv.DictReader(f):
-                steps.append(int(row["step"]))
-                rets.append(float(row["eval_return"]))
-        if steps_ref is None:
-            steps_ref = steps
-        n = min(len(steps_ref), len(rets))
-        returns_per_seed.append(rets[:n])
-        steps_ref = steps_ref[:n]
+                episodes.append(int(row["episode"]))
+                rets.append(float(row["episode_return"]))
+        per_seed_episodes.append(episodes)
+        per_seed_returns.append(rets)
 
-    return np.asarray(steps_ref), np.asarray(returns_per_seed), paths
+    # Seeds can finish with different eval-row counts (truncation timing varies).
+    # Truncate all series to the shortest seed so the stack is rectangular.
+    n = min(len(r) for r in per_seed_returns)
+    episodes_ref = per_seed_episodes[0][:n]
+    returns_per_seed = [r[:n] for r in per_seed_returns]
+
+    return np.asarray(episodes_ref), np.asarray(returns_per_seed), paths
 
 
 def plot_env(env_name: str, out_dir: str = "plots") -> str:
-    steps, returns, paths = load_seed_csvs(env_name)
+    episodes, returns, paths = load_seed_csvs(env_name)
     mean = returns.mean(axis=0)
     std = returns.std(axis=0)
 
@@ -41,12 +44,12 @@ def plot_env(env_name: str, out_dir: str = "plots") -> str:
     out_path = os.path.join(out_dir, f"{env_name}.png")
 
     plt.figure(figsize=(8, 5))
-    plt.plot(steps, mean, label=f"SAC mean (n={len(paths)} seeds)", color="#d4801f")
-    plt.fill_between(steps, mean - std, mean + std, alpha=0.25, color="#d4801f")
+    plt.plot(episodes, mean, label=f"SAC mean (n={len(paths)} seeds)", color="#d4801f")
+    plt.fill_between(episodes, mean - std, mean + std, alpha=0.25, color="#d4801f")
     for i, row in enumerate(returns):
-        plt.plot(steps, row, alpha=0.25, linewidth=0.8, label=f"seed {i}")
-    plt.xlabel("Environment steps")
-    plt.ylabel("Evaluation return")
+        plt.plot(episodes, row, alpha=0.25, linewidth=0.8, label=f"seed {i}")
+    plt.xlabel("Episodes")
+    plt.ylabel("Episode return")
     plt.title(f"SAC on {env_name}")
     plt.grid(True, alpha=0.3)
     plt.legend(loc="best", fontsize=8)

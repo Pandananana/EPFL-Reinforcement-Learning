@@ -26,11 +26,11 @@ from train import TrainConfig, train
 
 def main() -> None:
     seed = int(sys.argv[1]) if len(sys.argv) > 1 else 0
-    total_steps = int(sys.argv[2]) if len(sys.argv) > 2 else 60_000
+    total_episodes = int(sys.argv[2]) if len(sys.argv) > 2 else 200
     cfg = TrainConfig(
         env_name="MountainCarContinuous-v0",
         seed=seed,
-        total_steps=total_steps,
+        total_episodes=total_episodes,
         start_steps=10_000,
         warmup_action_repeat=10,
         update_after=1_000,

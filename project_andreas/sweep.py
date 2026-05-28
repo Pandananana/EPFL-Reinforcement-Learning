@@ -40,8 +40,8 @@ from train import TrainConfig, train
 _position_queue: queue.Queue[int] = queue.Queue()
 
 DEFAULT_TRIAL_BUDGET = {
-    "Pendulum-v1": 15_000,
-    "MountainCarContinuous-v0": 40_000,
+    "Pendulum-v1": 75,
+    "MountainCarContinuous-v0": 40,
 }
 
 
@@ -87,7 +87,7 @@ SUGGEST_PARAMS: dict[str, Callable[[optuna.Trial], dict]] = {
 }
 
 
-def make_objective(env_name: str, total_steps: int, seed: int):
+def make_objective(env_name: str, total_episodes: int, seed: int):
     suggest = SUGGEST_PARAMS.get(env_name)
     if suggest is None:
         raise KeyError(
@@ -102,7 +102,7 @@ def make_objective(env_name: str, total_steps: int, seed: int):
             cfg = TrainConfig(
                 env_name=env_name,
                 seed=seed,
-                total_steps=total_steps,
+                total_episodes=total_episodes,
                 verbose=False,
                 progress_position=position,
                 progress_desc=f"trial {trial.number}",
@@ -134,7 +134,7 @@ def make_objective(env_name: str, total_steps: int, seed: int):
 def _run_worker(
     worker_idx: int,
     env_name: str,
-    total_steps: int,
+    total_episodes: int,
     n_trials_total: int,
     seed: int,
     study_name: str,
@@ -163,7 +163,7 @@ def _run_worker(
 
     _position_queue.put(worker_idx + 1)
 
-    obj = make_objective(env_name, total_steps, seed=seed)
+    obj = make_objective(env_name, total_episodes, seed=seed)
     study.optimize(
         obj,
         n_trials=n_trials_total,
@@ -181,13 +181,13 @@ def _run_worker(
 def run_sweep(
     env_name: str,
     n_trials: int,
-    total_steps: int | None,
+    total_episodes: int | None,
     n_jobs: int,
     seed: int,
     study_name: str | None,
     storage: str,
 ) -> optuna.Study:
-    total_steps = total_steps or DEFAULT_TRIAL_BUDGET.get(env_name, 30_000)
+    total_episodes = total_episodes or DEFAULT_TRIAL_BUDGET.get(env_name, 75)
     study_name = study_name or f"sac_{env_name}"
 
     sampler = TPESampler(seed=seed, n_startup_trials=5)
@@ -210,7 +210,7 @@ def run_sweep(
         while not _position_queue.empty():
             _position_queue.get_nowait()
         _position_queue.put(1)
-        obj = make_objective(env_name, total_steps, seed=seed)
+        obj = make_objective(env_name, total_episodes, seed=seed)
         study.optimize(obj, n_trials=n_trials, n_jobs=1, show_progress_bar=True)
     else:
         # Process fan-out. `spawn` (not fork) is required because PyTorch's
@@ -219,7 +219,7 @@ def run_sweep(
         procs = [
             ctx.Process(
                 target=_run_worker,
-                args=(i, env_name, total_steps, n_trials, seed, study_name, storage),
+                args=(i, env_name, total_episodes, n_trials, seed, study_name, storage),
             )
             for i in range(n_jobs)
         ]
@@ -249,7 +249,7 @@ def run_sweep(
         "best_value": study.best_value,
         "best_params": study.best_params,
         "n_trials": len(study.trials),
-        "search_total_steps": total_steps,
+        "search_total_episodes": total_episodes,
     }
     with open(f"results/best_{env_name}.json", "w") as f:
         json.dump(out, f, indent=2)
@@ -262,10 +262,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--env", default="Pendulum-v1")
     p.add_argument("--n-trials", type=int, default=30)
     p.add_argument(
-        "--total-steps",
+        "--total-episodes",
         type=int,
         default=None,
-        help="Per-trial training budget (defaults depend on env).",
+        help="Per-trial training budget in episodes (defaults depend on env).",
     )
     p.add_argument(
         "--n-jobs",
@@ -288,7 +288,7 @@ if __name__ == "__main__":
     run_sweep(
         env_name=args.env,
         n_trials=args.n_trials,
-        total_steps=args.total_steps,
+        total_episodes=args.total_episodes,
         n_jobs=args.n_jobs,
         seed=args.seed,
         study_name=args.study_name,

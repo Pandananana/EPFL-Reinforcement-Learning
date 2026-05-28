@@ -18,7 +18,7 @@ from tqdm.auto import tqdm
 class TrainConfig:
     env_name: str = "Pendulum-v1"
     seed: int = 0
-    total_steps: int = 30_000
+    total_episodes: int = 200
     start_steps: int = 10_000         # uniform-random actions before policy kicks in
     update_after: int = 1_000         # don't train until buffer has some data
     # Repeat each warmup random action for this many env steps. K=1 = per-step
@@ -113,6 +113,7 @@ def train(
     log_rows: list[dict] = []
     obs, _ = env.reset(seed=cfg.seed)
     ep_ret, ep_len = 0.0, 0
+    episode = 0
     t0 = time.time()
     warmup_a: np.ndarray | None = None
     warmup_a_left: int = 0
@@ -122,14 +123,16 @@ def train(
     pbar: tqdm | None = None
     if cfg.progress_position is not None:
         pbar = tqdm(
-            total=cfg.total_steps,
+            total=cfg.total_episodes,
             desc=cfg.progress_desc or f"{cfg.env_name} seed={cfg.seed}",
             position=cfg.progress_position,
             leave=False,
             dynamic_ncols=True,
         )
 
-    for step in range(1, cfg.total_steps + 1):
+    step = 0
+    while episode < cfg.total_episodes:
+        step += 1
         if step < cfg.start_steps:
             if warmup_a_left == 0:
                 warmup_a = env.action_space.sample()
@@ -148,8 +151,17 @@ def train(
         ep_len += 1
         if term or trunc:
             obs, _ = env.reset()
+            episode += 1
+            log_rows.append({
+                "episode": episode,
+                "step": step,
+                "episode_return": ep_ret,
+                "elapsed_s": time.time() - t0,
+            })
             ep_ret, ep_len = 0.0, 0
             warmup_a_left = 0  # fresh random action at start of next episode
+            if pbar is not None:
+                pbar.update(1)
 
         if step >= cfg.update_after and step % cfg.update_every == 0:
             for _ in range(cfg.update_every):
@@ -157,13 +169,6 @@ def train(
 
         if step % cfg.eval_every == 0:
             eval_ret, eval_std = evaluate(eval_env, agent, cfg.n_eval_episodes)
-            row = {
-                "step": step,
-                "eval_return": eval_ret,
-                "eval_std": eval_std,
-                "elapsed_s": time.time() - t0,
-            }
-            log_rows.append(row)
             if cfg.verbose:
                 msg = (
                     f"[{cfg.env_name} seed={cfg.seed}] "
@@ -199,9 +204,6 @@ def train(
                 if progress_callback(step, eval_ret):
                     break
 
-        if pbar is not None:
-            pbar.update(1)
-
     if pbar is not None:
         pbar.close()
 
@@ -212,7 +214,7 @@ def train(
         os.makedirs(os.path.dirname(cfg.log_path) or ".", exist_ok=True)
         with open(cfg.log_path, "w", newline="") as f:
             writer = csv.DictWriter(
-                f, fieldnames=["step", "eval_return", "eval_std", "elapsed_s"]
+                f, fieldnames=["episode", "step", "episode_return", "elapsed_s"]
             )
             writer.writeheader()
             writer.writerows(log_rows)
@@ -228,4 +230,4 @@ def train(
 
 if __name__ == "__main__":
     # Quick single-run sanity check: `python train.py`
-    train(TrainConfig(env_name="Pendulum-v1", total_steps=15_000, verbose=True))
+    train(TrainConfig(env_name="Pendulum-v1", total_episodes=75, verbose=True))
