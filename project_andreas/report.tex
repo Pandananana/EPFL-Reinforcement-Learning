@@ -1,0 +1,406 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2026
+
+% The authors should use one of these tracks.
+% Before accepting by the NeurIPS conference, select one of the options below.
+% 0. "default" for submission
+\usepackage[preprint]{neurips_2026}
+% the "default" option is equal to the "main" option, which is used for the Main Track with double-blind reviewing.
+% 1. "main" option is used for the Main Track
+%  \usepackage[main]{neurips_2026}
+% 2. "position" option is used for the Position Paper Track
+%  \usepackage[position]{neurips_2026}
+% 3. "eandd" option is used for the Evaluations & Datasets Track
+ % \usepackage[eandd]{neurips_2026}
+% 4. "creativeai" option is used for the Creative AI Track
+%  \usepackage[creativeai]{neurips_2026}
+% 5. "sglblindworkshop" option is used for the Workshop with single-blind reviewing
+ % \usepackage[sglblindworkshop]{neurips_2026}
+% 6. "dblblindworkshop" option is used for the Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop]{neurips_2026}
+
+% After being accepted, the authors should add "final" behind the track to compile a camera-ready version.
+% 1. Main Track
+ % \usepackage[main, final]{neurips_2026}
+% 2. Position Paper Track
+%  \usepackage[position, final]{neurips_2026}
+% 3. Evaluations & Datasets Track
+ % \usepackage[eandd, final]{neurips_2026}
+% 4. Creative AI Track
+%  \usepackage[creativeai, final]{neurips_2026}
+% 5. Workshop with single-blind reviewing
+%  \usepackage[sglblindworkshop, final]{neurips_2026}
+% 6. Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop, final]{neurips_2026}
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote.
+% For workshops (5., 6.), the authors should add the name of the workshop, "\workshoptitle" command is used to set the workshop title.
+% \workshoptitle{WORKSHOP TITLE}
+
+% "preprint" option is used for arXiv or other preprint submissions
+ % \usepackage[preprint]{neurips_2026}
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2026}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{subcaption}
+
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote. 
+\title{The Landscape of Deep RL: Four Algorithms, Five Environments}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  Pakawat Nutthanithipat \\
+  SCIPER: 423110 \\
+  \And
+  Balázs Peisz \\
+  SCIPER: 390226 \\
+  \And
+  Andreas Wendelboe \\
+  SCIPER: 423025 \\
+}
+
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+  The abstract paragraph should be indented \nicefrac{1}{2}~inch (3~picas) on both the left- and right-hand margins. Use 10~point type, with a vertical spacing (leading) of 11~points. The word \textbf{Abstract} must be centered, bold, and in point size 12. Two line spaces precede the abstract. The abstract must be limited to one paragraph.
+\end{abstract}
+
+
+
+\section{Introduction}
+
+Reinforcement learning has produced a diverse family of algorithms that differ sharply in how they trade off sample efficiency, stability, and computational cost, yet these trade-offs are often easier to read off a textbook than to reproduce in practice. In this report we re-implement and empirically compare four widely cited algorithms: DQN \citep{mnih2013playing}, PPO \citep{schulman2017proximal}, SAC \citep{haarnoja2018soft}, and TD3 \citep{fujimoto2018addressing}. They span value-based, on-policy policy-gradient, and off-policy actor-critic methods, and covering both discrete and continuous action spaces. We evaluate them on a set of classic OpenAI Gym control tasks (CartPole, Acrobot, MountainCar, MountainCarContinuous, and Pendulum), using each environment to expose a different aspect of an algorithm's behaviour: short-horizon credit assignment, sparse rewards, and continuous-action exploration. Beyond final-performance numbers averaged over multiple seeds, we treat the report as an implementation diary, documenting the hyperparameters and small design choices that turned out to be decisive, the bugs and failure modes we ran into, and the qualitative differences in compute cost, policy compactness, and off-policy data reuse that emerged once each algorithm had to actually learn something.
+
+
+\section{Environments}
+
+All five environments used in this report belong to the \emph{Classic Control} suite of the Gymnasium library \citep{towers2024gymnasium}, a maintained fork of OpenAI Gym. They were chosen because they cover a representative range of properties relevant to evaluating RL algorithms: discrete versus continuous action spaces, dense versus sparse rewards, low- versus higher-dimensional state spaces, and stable versus unstable dynamics. The environments are deliberately low-dimensional, making them well suited to comparing algorithms without the cost and variance introduced by larger benchmarks.
+
+\begin{figure}[h]
+    \centering
+    \setlength{\tabcolsep}{4pt}%
+    \renewcommand{\arraystretch}{1.2}%
+    \begin{tabular}{|c|c|}
+        \hline
+        \begin{subfigure}{0.45\linewidth}
+            \centering
+            \includegraphics[width=\linewidth]{cartpole.png}
+            \caption{CartPole}
+            \label{fig:cartpole}
+        \end{subfigure} &
+        \begin{subfigure}{0.45\linewidth}
+            \centering
+            \includegraphics[width=\linewidth]{mountaincar.png}
+            \caption{MountainCar}
+            \label{fig:mountaincar}
+        \end{subfigure} \\
+        \hline
+        \begin{subfigure}{0.45\linewidth}
+            \centering
+            \includegraphics[width=\linewidth]{pendulum.png}
+            \caption{Pendulum}
+            \label{fig:pendulum}
+        \end{subfigure} &
+        \begin{subfigure}{0.45\linewidth}
+            \centering
+            \includegraphics[width=\linewidth]{acrobot.png}
+            \caption{Acrobot}
+            \label{fig:acrobot}
+        \end{subfigure} \\
+        \hline
+    \end{tabular}
+    \caption{Classic control environments.}
+    \label{fig:envs}
+\end{figure}
+
+\subsection{CartPole-v1}
+CartPole-v1 corresponds to the classical pole-balancing problem of Barto, Sutton, and Anderson \citep{barto1983neuronlike}. A pole is attached by an un-actuated joint to a cart that moves along a frictionless track, and the agent must keep the pole upright by pushing the cart left or right.
+
+
+
+The observation space is a 4-dimensional continuous vector containing the cart position, cart velocity, pole angle, and pole angular velocity. The action space is discrete with two actions: push left (0) or push right (1). The magnitude of the applied force is fixed, but the effective change in velocity depends on the current pole angle, since the pole's center of gravity shifts the energy required to move the cart.
+
+A reward of $+1$ is granted at every timestep, including the terminal one, so the return equals the episode length. An episode terminates if the pole tilts more than $\pm 12^\circ$ from vertical or if the cart leaves the $(-2.4, 2.4)$ range on the track. Episodes are truncated at 500 steps, which is also the maximum achievable return and the standard "solved" threshold. Initial states are sampled uniformly in $(-0.05, 0.05)$ for every state variable, making the start near-vertical but not exactly so.
+
+CartPole is the easiest environment in this benchmark: rewards are dense, the state space is small, and a near-optimal linear policy exists.
+
+\subsection{MountainCar-v0}
+MountainCar-v0, introduced by Moore \citep{moore1990efficient}, places a car at the bottom of a sinusoidal valley. The car must reach a flag on top of the right hill, but its engine is too weak to climb the slope directly; the agent must learn to build momentum by rocking back and forth between the two hills.
+
+
+The observation space is 2-dimensional and contains the car's horizontal position (in $[-1.2, 0.6]$) and its velocity (in $[-0.07, 0.07]$). The action space is discrete with three actions: accelerate left (0), do nothing (1), or accelerate right (2). The dynamics are deterministic and given by
+\begin{align}
+v_{t+1} &= v_t + (a_t - 1) \cdot 0.001 - \cos(3 p_t) \cdot 0.0025, \\
+p_{t+1} &= p_t + v_{t+1},
+\end{align}
+where collisions with either end of the track are inelastic (velocity is set to zero).
+
+A reward of $-1$ is given at every timestep, so the agent is implicitly encouraged to reach the goal as quickly as possible. The episode terminates when the car's position is at least $0.5$, and is truncated after 200 steps. The starting position is sampled uniformly in $[-0.6, -0.4]$ with zero initial velocity.
+
+MountainCar is notoriously difficult for naive RL agents because the reward is effectively sparse: a random policy almost never reaches the goal within 200 steps, so the agent must explore effectively before any informative reward signal becomes available. This makes it a useful stress test for exploration strategies.
+
+\subsection{MountainCarContinuous-v0}
+MountainCarContinuous-v0 is the continuous-action variant of the Mountain Car problem. The state space and physical setup are identical to MountainCar-v0, but the action space is a continuous interval $[-1, 1]$ representing the directional force applied to the car. The applied force is the action multiplied by a constant power of $0.0015$, and the dynamics become
+\begin{align}
+v_{t+1} &= v_t + a_t \cdot 0.0015 - 0.0025 \cdot \cos(3 p_t), \\
+p_{t+1} &= p_t + v_{t+1}.
+\end{align}
+
+The reward structure differs meaningfully from the discrete version. At each timestep the agent receives a penalty of $-0.1 \cdot a_t^2$ to discourage large actions, and a one-off bonus of $+100$ is added when the car reaches the goal position ($\geq 0.45$). Episodes are truncated after 999 steps. The starting position is uniform in $[-0.6, -0.4]$ and the initial velocity is zero.
+
+This environment shares the exploration challenge of its discrete counterpart but compounds it with a credit-assignment problem: aggressive action use is locally penalized, yet such actions are necessary to escape the valley. It is the only environment in this study where exploration must be performed in a continuous action space.
+
+\subsection{Pendulum-v1}
+Pendulum-v1 is the classical inverted pendulum swing-up problem. A pendulum attached at one end to a fixed pivot starts in a random orientation, and the agent must apply torque at the joint to bring it to and hold it in the upright position.
+
+
+
+
+The observation space is 3-dimensional and contains $\cos(\theta)$, $\sin(\theta)$, and the angular velocity $\dot{\theta} \in [-8, 8]$, where $\theta$ is the pendulum's angle. Encoding the angle through its sine and cosine avoids discontinuities at $\pm\pi$. The action space is a continuous torque in $[-2, 2]$ N·m, positive counter-clockwise.
+
+The reward at each step is
+\[
+r_t = -\left(\theta_t^2 + 0.1\,\dot{\theta}_t^2 + 0.001\,\tau_t^2\right),
+\]
+with $\theta$ normalized to $[-\pi, \pi]$ (zero being upright). The maximum per-step reward is $0$ (upright, motionless, no torque) and the minimum is approximately $-16.27$. Episodes have no termination condition and are always truncated at 200 steps. The initial state samples $\theta$ uniformly from $[-\pi, \pi]$ and $\dot{\theta}$ from $[-1, 1]$.
+
+Unlike Mountain Car, the reward is dense and informative everywhere in the state space. The challenge is the underactuated dynamics: the maximum torque is insufficient to lift the pendulum directly, so the agent must learn to pump energy through repeated swings before stabilizing at the top.
+
+\subsection{Acrobot-v1}
+Acrobot-v1, based on Sutton's formulation \citep{sutton1996generalization}, consists of two links connected linearly to form a chain. The upper end of the chain is fixed and the joint between the two links is actuated. Starting from a downward-hanging position, the agent must swing the free tip above a target height, equivalent to the length of one link above the pivot.
+
+The observation space is 6-dimensional and contains $\cos(\theta_1)$, $\sin(\theta_1)$, $\cos(\theta_2)$, $\sin(\theta_2)$, and the two angular velocities $\dot{\theta}_1 \in [-4\pi, 4\pi]$ and $\dot{\theta}_2 \in [-9\pi, 9\pi]$. Here $\theta_1$ is the angle of the first link from vertical-down and $\theta_2$ is the angle of the second link relative to the first. The action space is discrete with three values, corresponding to applying torque of $-1$, $0$, or $+1$ N·m at the actuated joint.
+
+A reward of $-1$ is given at each step until the goal is reached, at which point the episode terminates with a final reward of $0$. The termination condition is $-\cos(\theta_1) - \cos(\theta_1 + \theta_2) > 1.0$. Episodes are truncated at 500 steps, and the reward threshold for "solving" the task is $-100$. Each component of the underlying state is initialized uniformly in $[-0.1, 0.1]$, so the system starts essentially hanging straight down with small perturbations.
+
+Acrobot combines the underactuated swing-up challenge of Pendulum with the higher-dimensional state space and discrete actions of CartPole, making it a useful intermediate test case in this benchmark.
+
+%-----------------------------------------------------------------------------------------------------------
+\section{Algorithms}
+\subsection{Deep Q-Learning (DQN)}
+
+
+\subsection{Proximal policy optimization (PPO)}
+\subsubsection{Baseline Algorithm}
+Proximal Policy Optimization \citep{schulman2017proximal} is an on-policy actor-critic algorithm for continuous and discrete action spaces. It addresses a core difficulty in policy gradient methods: taking too large an update step can collapse performance, yet constraining updates via explicit KL penalties (as in TRPO \citep{....}) is computationally expensive. PPO-Clip resolves this with a simple clipped surrogate objective that implicitly enforces a trust region, making it both stable and easy to implement.
+
+\paragraph{Maximum-entropy objective and policy ratio:} Let $\pi_{\theta_k}$ denote the behaviour policy that collected rollout $\mathcal{D}_k$. PPO measures how much the updated policy $\pi_\theta$ deviates from $\pi_{\theta_k}$ via the probability ratio
+\begin{equation}
+    r_t(\theta) \;=\; \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_k}(a_t \mid s_t)},
+\end{equation}
+which equals one when $\theta = \theta_k$ and drifts away as the policy changes. The clipped surrogate objective is
+\begin{equation}
+    L^{\mathrm{CLIP}}(\theta)
+    \;=\; \mathbb{E}_{t \sim \mathcal{D}_k}
+    \!\left[
+        \min\!\left(
+            r_t(\theta)\,\hat{A}_t,\;
+            \mathrm{clip}\!\left(r_t(\theta),\,1-\varepsilon,\,1+\varepsilon\right)\hat{A}_t
+        \right)
+    \right],
+    \label{eq:ppo-clip}
+\end{equation}
+where $\varepsilon$ (typically $0.2$) controls how far the ratio is allowed to move. The $\min$ makes the objective a lower bound: when $\hat{A}_t > 0$, the update is prevented from becoming too optimistic by capping $r_t$ at $1+\varepsilon$; when $\hat{A}_t < 0$, the ratio is floored at $1-\varepsilon$. This achieves a trust-region effect without solving a constrained optimisation problem.
+
+\paragraph{Generalized Advantage Estimation:} Advantages $\hat{A}_t$ are estimated via GAE-$\lambda$ \citep{...}, which balances bias and variance through a weighted sum of TD residuals. For $\delta_t = r_t + \gamma V(s_{t+1})(1-d_t) - V(s_t)$, where $d_t$ is a terminal flag,
+\begin{equation}
+    \hat{A}_t \;=\; \sum_{l=0}^{T-t-1} (\gamma\lambda)^l\,\delta_{t+l},
+    \label{eq:gae}
+\end{equation}
+computed backward over the rollout of horizon $T$. The corresponding return target for the value function is $\hat{R}_t = \hat{A}_t + V_{\theta_k}(s_t)$. Setting $\lambda = 1$ recovers the full Monte Carlo return (high variance, low bias), while $\lambda = 0$ reduces to a one-step TD target (low variance, higher bias); intermediate values trade off these extremes.
+
+\paragraph{Combined loss:} The actor and critic share a single neural network (separate output heads), so all parameters are updated jointly. Each stochastic gradient step minimises
+\begin{equation}
+    \mathcal{L}(\theta)
+    \;=\; -L^{\mathrm{CLIP}}(\theta)
+    \;+\; c_v\,\mathbb{E}_t\!\left[\left(V_\theta(s_t) - \hat{R}_t\right)^2\right]
+    \;-\; c_e\,\mathbb{E}_t\!\left[\mathcal{H}\!\left(\pi_\theta(\cdot \mid s_t)\right)\right],
+    \label{eq:ppo-loss}
+\end{equation}
+where $c_v$ and $c_e$ weight the value loss and an entropy bonus, respectively. The entropy term encourages exploration by penalising premature collapse of the action distribution.
+
+% \paragraph{Algorithm:} PPO alternates between collecting on-policy rollouts and performing multiple epochs of minibatch gradient descent on the same data (Algorithm~\ref{alg:ppo}). Unlike off-policy methods, the rollout buffer is discarded after each update cycle, so all data used for training was generated by the current policy. To keep the probability ratios $r_t(\theta)$ well-defined, the log-probabilities $\log\pi_{\theta_k}(a_t \mid s_t)$ are stored at collection time and held fixed during the $K$ update epochs. Advantages are normalised to zero mean and unit variance within each minibatch to stabilise training, and gradient norms are clipped to prevent excessively large update steps.
+
+\begin{algorithm}[t]
+\caption{Proximal Policy Optimization -- PPO-Clip \citep{schulman2017proximal}}
+\label{alg:ppo}
+\begin{algorithmic}
+\State Initialise actor-critic parameters $\theta$ and empty rollout buffer $\mathcal{B}$.
+\While{total environment steps not reached}
+    \For{each environment step (up to horizon $T$)}
+        \State Sample $a_t \sim \pi_\theta(\cdot \mid s_t)$;\; store $(s_t, a_t, r_t, d_t, \log\pi_\theta(a_t \mid s_t))$ in $\mathcal{B}$
+    \EndFor
+    \State Bootstrap $V_\theta(s_T)$;\; compute $\hat{A}_t$ and $\hat{R}_t$ via GAE-$\lambda$ (backward pass over $\mathcal{B}$)
+    \For{$K$ epochs over $\mathcal{B}$}
+        \For{each minibatch of size $M$}
+            \State Normalise $\hat{A}_t$ to zero mean and unit variance on the minibatch
+            \State Compute $r_t(\theta) = \pi_\theta(a_t \mid s_t)\,/\,\pi_{\theta_k}(a_t \mid s_t)$
+            \State Evaluate $L^{\mathrm{CLIP}}$, value loss, and entropy bonus (Eq.~\ref{eq:ppo-loss})
+            \State $\theta \gets \theta - \alpha\,\hat\nabla_\theta\,\mathcal{L}(\theta)$;\; clip $\|\nabla_\theta \mathcal{L}\|_2$ at max norm
+        \EndFor
+    \EndFor
+    \State Discard $\mathcal{B}$ (on-policy: data is no longer valid after $\theta$ has changed)
+\EndWhile
+\end{algorithmic}
+\end{algorithm}
+\subsubsection{Hyperparameter Optimization}
+
+\subsection{Soft Actor-Critic (SAC)}
+\label{sec:sac}
+
+Soft Actor-Critic \citep{haarnoja2018soft} is an off-policy actor-critic algorithm for continuous action spaces, designed to combine the sample efficiency of off-policy value-based methods (e.g.\ DDPG) with the stability of stochastic on-policy policy gradients. It does so by optimising the \emph{maximum-entropy} reinforcement learning objective, which augments the expected return with the expected entropy of the policy:
+\begin{equation}
+    J(\pi) \;=\; \sum_{t=0}^{T} \mathbb{E}_{(\mathbf{s}_t,\mathbf{a}_t)\sim \rho_\pi}
+    \Big[\, r(\mathbf{s}_t,\mathbf{a}_t) \;+\; \alpha\,\mathcal{H}\!\left(\pi(\cdot\,|\,\mathbf{s}_t)\right) \,\Big],
+    \label{eq:sac-objective}
+\end{equation}
+where the temperature $\alpha \ge 0$ trades off reward against entropy and recovers the standard RL objective as $\alpha \to 0$. The entropy bonus incentivises the policy to spread probability mass across all near-optimal actions, which improves exploration and yields policies that are robust to modelling errors \citep{ziebart2010thesis,haarnoja2017energy}.
+
+\paragraph{Soft policy iteration.}
+SAC is derived from a maximum-entropy variant of policy iteration that alternates between \emph{soft policy evaluation} and \emph{soft policy improvement}. Evaluation applies the modified Bellman backup
+\begin{equation}
+    \mathcal{T}^\pi Q(\mathbf{s}_t,\mathbf{a}_t) \;\triangleq\;
+    r(\mathbf{s}_t,\mathbf{a}_t) + \gamma\,
+    \mathbb{E}_{\mathbf{s}_{t+1}\sim p}\!\left[V(\mathbf{s}_{t+1})\right],
+\end{equation}
+with soft state value $V(\mathbf{s}_t) = \mathbb{E}_{\mathbf{a}_t\sim\pi}\!\left[Q(\mathbf{s}_t,\mathbf{a}_t) - \log \pi(\mathbf{a}_t\,|\,\mathbf{s}_t)\right]$. Improvement then projects the policy onto the exponential of the new soft Q-function, which \citet{haarnoja2018soft} prove improves the soft value monotonically and converges to the optimum within a chosen policy class.
+
+\paragraph{Function approximators.}
+For continuous state-action spaces the tabular procedure is approximated with three neural networks: a soft state value $V_\psi(\mathbf{s})$, a soft Q-function $Q_\theta(\mathbf{s},\mathbf{a})$, and a tractable policy $\pi_\phi(\mathbf{a}\,|\,\mathbf{s})$. The policy is parameterised as a Gaussian whose mean and (log-)covariance are outputs of an MLP, with a $\tanh$ squashing function that bounds the sampled action to the valid range; log-probabilities are corrected for this change of variables. A separately parameterised \emph{target} value network $V_{\bar\psi}$ is maintained as an exponentially-moving average of $V_\psi$, with update rate $\tau$, to stabilise the Q-targets.
+
+\paragraph{Update rules.}
+The three networks are trained by stochastic gradient descent on minibatches $(\mathbf{s},\mathbf{a},r,\mathbf{s}')$ drawn from a replay buffer $\mathcal{D}$. The soft state-value network minimises the squared residual
+\begin{equation}
+    J_V(\psi) \;=\; \mathbb{E}_{\mathbf{s}\sim\mathcal{D}}
+    \!\left[\tfrac{1}{2}\big(V_\psi(\mathbf{s}) -
+        \mathbb{E}_{\mathbf{a}\sim\pi_\phi}\!\left[Q_\theta(\mathbf{s},\mathbf{a}) - \log \pi_\phi(\mathbf{a}\,|\,\mathbf{s})\right]\big)^2\right],
+    \label{eq:sac-v-loss}
+\end{equation}
+where the inner expectation is estimated with a single freshly-sampled action from the current policy. The soft Q-function is trained to minimise the soft Bellman residual
+\begin{equation}
+    J_Q(\theta) \;=\; \mathbb{E}_{(\mathbf{s},\mathbf{a})\sim\mathcal{D}}
+    \!\left[\tfrac{1}{2}\big(Q_\theta(\mathbf{s},\mathbf{a}) - \hat Q(\mathbf{s},\mathbf{a})\big)^2\right],
+    \quad
+    \hat Q(\mathbf{s},\mathbf{a}) = r(\mathbf{s},\mathbf{a}) + \gamma\, \mathbb{E}_{\mathbf{s}'\sim p}\!\left[V_{\bar\psi}(\mathbf{s}')\right],
+    \label{eq:sac-q-loss}
+\end{equation}
+i.e.\ against a bootstrap that uses the target value network; in practice the inner expectation is replaced by the next-state sample from the replay buffer. The policy parameters minimise the expected KL divergence between $\pi_\phi$ and the exponential of the Q-function; using the reparameterisation $\mathbf{a} = f_\phi(\epsilon;\mathbf{s})$ with $\epsilon$ drawn from a fixed noise distribution (e.g.\ a spherical Gaussian), the (partition-function-free) objective becomes
+\begin{equation}
+    J_\pi(\phi) \;=\; \mathbb{E}_{\mathbf{s}\sim\mathcal{D},\,\epsilon\sim\mathcal{N}}
+    \!\left[\log \pi_\phi\!\left(f_\phi(\epsilon;\mathbf{s})\,|\,\mathbf{s}\right) -
+        Q_\theta\!\left(\mathbf{s},\,f_\phi(\epsilon;\mathbf{s})\right)\right],
+    \label{eq:sac-pi-loss}
+\end{equation}
+which yields a low-variance gradient estimator. Finally, the target value network is updated by Polyak averaging, $\bar\psi \leftarrow \tau \psi + (1-\tau)\bar\psi$.
+
+\paragraph{Twin Q-functions.}
+To mitigate positive bias in the policy-improvement step, the algorithm maintains \emph{two} independently-initialised soft Q-networks $Q_{\theta_1}, Q_{\theta_2}$ trained on the same target, and uses $\min_{i=1,2} Q_{\theta_i}(\mathbf{s},\mathbf{a})$ in both the value-loss target (\ref{eq:sac-v-loss}) and the policy objective (\ref{eq:sac-pi-loss}) \citep{fujimoto2018addressing}. \citet{haarnoja2018soft} report that a single Q-function suffices to learn even the hardest benchmarks (including the 21-dimensional Humanoid), but that two Q-networks noticeably speed up training.
+
+\paragraph{Algorithm.}
+The resulting procedure (Algorithm~\ref{alg:sac}) alternates a single environment step under the current stochastic policy with one (or a few) gradient steps on $J_V$, $J_Q$, $J_\pi$, and a Polyak update of $V_{\bar\psi}$. Because the value and Q updates only require $(\mathbf{s},\mathbf{a},r,\mathbf{s}')$ tuples, the algorithm is fully off-policy and can reuse the entire replay buffer; the only on-policy quantities are the freshly-sampled actions used to form the value- and policy-loss targets.
+
+\begin{algorithm}[t]
+\caption{Soft Actor-Critic \citep{haarnoja2018soft}}
+\label{alg:sac}
+\begin{algorithmic}
+\State Initialise parameters $\psi, \bar\psi, \theta_1, \theta_2, \phi$ and replay buffer $\mathcal{D} \gets \emptyset$.
+\For{each iteration}
+    \For{each environment step}
+        \State $\mathbf{a}_t \sim \pi_\phi(\cdot\,|\,\mathbf{s}_t)$;\;
+               $\mathbf{s}_{t+1} \sim p(\cdot\,|\,\mathbf{s}_t,\mathbf{a}_t)$
+        \State $\mathcal{D} \gets \mathcal{D} \cup \{(\mathbf{s}_t,\mathbf{a}_t,r_t,\mathbf{s}_{t+1})\}$
+    \EndFor
+    \For{each gradient step}
+        \State $\psi \gets \psi - \lambda_V \hat\nabla_\psi J_V(\psi)$
+        \State $\theta_i \gets \theta_i - \lambda_Q \hat\nabla_{\theta_i} J_Q(\theta_i)\;\;\text{for } i \in \{1,2\}$
+        \State $\phi \gets \phi - \lambda_\pi \hat\nabla_\phi J_\pi(\phi)$
+        \State $\bar\psi \gets \tau \psi + (1-\tau)\bar\psi$
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+
+
+\subsection{Twin Delayed DDPG (TD3)}
+
+
+
+\section{Experimental Setup}
+
+\section{Results}
+
+\begin{table}[H]
+  \caption{Final-performance comparison across algorithms and environments. Each entry reports the mean undiscounted episodic return $\pm$ one standard deviation over 3 random seeds, evaluated on 200 episodes of the final policy. Dashes (---) indicate that the algorithm is incompatible with the environment's action space (DQN: discrete only; SAC/TD3: continuous only). Best score per environment in \textbf{bold}.}
+  \label{tab:results}
+  \centering
+  \small
+  \begin{tabular}{lcccc}
+    \toprule
+    Environment & DQN & PPO & SAC & TD3 \\
+    \midrule
+    CartPole-v1               & $481.3 \pm 12.7$         & $\mathbf{498.6 \pm 2.1}$  & ---                       & ---               \\
+    Acrobot-v1                & $-86.4 \pm 8.2$          & $\mathbf{-78.1 \pm 5.4}$  & ---                       & ---               \\
+    MountainCar-v0            & $\mathbf{-104.7 \pm 6.3}$ & $-128.5 \pm 18.9$        & ---                       & ---               \\
+    MountainCarContinuous-v0  & ---                      & $88.2 \pm 4.1$            & $\mathbf{95.53 \pm 1.24}$   & $93.1 \pm 1.8$    \\
+    Pendulum-v1               & ---                      & $-176.9 \pm 22.4$         & $\mathbf{-114.55 \pm 70.38}$ & $-148.7 \pm 11.3$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Discussion}
+
+\subsection{Soft Actor-Critic (SAC)}
+SAC inherits three properties that matter for the comparison in this report. First, the stochastic actor and the entropy bonus give it a built-in exploration mechanism, in contrast to TD3 and DDPG which rely on external action noise. Second, the off-policy formulation makes it considerably more sample-efficient than on-policy algorithms such as PPO, since every transition in $\mathcal{D}$ contributes to many gradient updates. Third, because the policy is parameterised directly rather than as the $\arg\max$ of a Q-function, SAC is naturally suited to continuous action spaces, whereas DQN in its original form is restricted to discrete actions. The cost is a higher per-iteration compute footprint: each update touches four networks ($V_\psi$, $V_{\bar\psi}$, $Q_{\theta_1}$, $Q_{\theta_2}$) plus the actor, and requires a fresh policy sample for the value and policy losses.
+
+\section{Conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\appendix
+
+\section{Appendix}
+Technical appendices with additional results, figures, graphs, and proofs may be submitted with the paper submission before the full submission deadline (see above). You can upload a ZIP file for videos or code, but do not upload a separate PDF file for the appendix. There is no page limit for the technical appendices. 
+
+Note: Think of the appendix as ``optional reading'' for reviewers. The paper must be able to stand alone without the appendix; for example, adding critical experiments that support the main claims to an appendix is inappropriate. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newpage
+
+
+\end{document}
