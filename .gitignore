@@ -3,7 +3,7 @@ __pycache__
 **/slides
 models/
 *.pdf
-sweeps.db
+*.db
 sweeps.db-journal
 *.log
 *.pyc

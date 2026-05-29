@@ -306,7 +306,9 @@ The three networks are trained by stochastic gradient descent on minibatches $(\
         \mathbb{E}_{\mathbf{a}\sim\pi_\phi}\!\left[Q_\theta(\mathbf{s},\mathbf{a}) - \log \pi_\phi(\mathbf{a}\,|\,\mathbf{s})\right]\big)^2\right],
     \label{eq:sac-v-loss}
 \end{equation}
+
 where the inner expectation is estimated with a single freshly-sampled action from the current policy. The soft Q-function is trained to minimise the soft Bellman residual
+
 \begin{equation}
     J_Q(\theta) \;=\; \mathbb{E}_{(\mathbf{s},\mathbf{a})\sim\mathcal{D}}
     \!\left[\tfrac{1}{2}\big(Q_\theta(\mathbf{s},\mathbf{a}) - \hat Q(\mathbf{s},\mathbf{a})\big)^2\right],
@@ -350,13 +352,24 @@ The resulting procedure (Algorithm~\ref{alg:sac}) alternates a single environmen
 \end{algorithmic}
 \end{algorithm}
 
+\subsubsection{Hyperparameter Sensitivity}
+
+We ran 143-trial Optuna sweeps of SAC on the two continuous-control environments in our benchmark. The swept set is identical across environments except that MountainCarContinuous-v0 also varies \texttt{warmup\_action\_repeat}, the knob from Section~\ref{sec:sac} used to seed the replay buffer with successful trajectories. Trials use the same training budget and three evaluation seeds as our final runs, and we report the mean undiscounted episodic return of the final policy.
+
+\paragraph{MountainCarContinuous-v0.}
+On this sparse-reward task only about 21 percent of trials cross our ``solved'' threshold of return $\geq 80$; the rest are stuck near zero. Three knobs separate the two regimes. First, \texttt{warmup\_action\_repeat} must sit in a narrow band: a value of 1 solves 0 of 29 trials, values of 5 or 10 solve roughly 28 percent each, and a value of 20 over-commits to a single direction and drops the success rate back to 10 percent. Second, the discount factor must lie in $\{0.999, 0.9999\}$, which solve 32 and 27 percent of trials respectively; the other settings we tested (0.99, 0.995, 0.9995, 0.99995) all collapse to a 0 percent solve rate. Third, a batch size of 128 beats 256 and 512 by a wide margin (28 percent versus 0 and 11), plausibly because smaller minibatches expose the buffer's rare goal-reaching transitions more often per gradient step. Outside of those three knobs SAC is essentially insensitive to the temperature $\alpha$, the learning rate, and the Polyak rate $\tau$ across the ranges swept. Once the buffer contains successful trajectories the 2-dimensional state space is easy enough that fine-grained optimizer choices stop mattering.
+
+\paragraph{Pendulum-v1.}
+With dense rewards the picture flips. About 48 percent of trials reach a loose ``good'' threshold of return $\geq -200$, and the sensitivity is concentrated on the optimization side rather than on exploration. Learning rate is the dominant knob: the lowest swept quartile (below roughly $3 \times 10^{-4}$) never crosses the threshold, while the upper three quartiles solve between 56 and 72 percent of trials. Counter-intuitively, lower discount factors work better here: the bottom quartile of the swept range (0.95 to 0.968) solves 66 percent of trials, the top quartile (0.983 to 0.999) only 31 percent. Pendulum episodes are 200 truncated steps with no real long-horizon credit, so larger $\gamma$ mostly inflates variance in the bootstrap target. The Polyak rate peaks in a narrow band of $\tau \in [0.004, 0.007]$ and degrades at either end; batch size 128 again beats 256 and 512; and a hidden dim of 128 beats both 64 (too small) and 256 (overparameterised for this short-horizon task). The entropy temperature $\alpha$ barely moves the result over two orders of magnitude, consistent with the SAC paper's claim that the method is robust to $\alpha$ once it is in a sensible range.
+
+\paragraph{Takeaway.}
+The hyperparameters that drive SAC's performance are environment dependent rather than universal. Exploration-side knobs (\texttt{warmup\_action\_repeat} and a careful $\gamma$) dominate on sparse-reward MountainCarContinuous, while optimization-side knobs ($\eta$, $\gamma$, $\tau$) dominate on dense-reward Pendulum. The entropy temperature $\alpha$ has only a small effect on either environment, which lines up with $\alpha$ being precisely the parameter SAC's automatic-temperature variant is designed to remove from the tuning loop.
+
+
 
 
 \subsection{Twin Delayed DDPG (TD3)}
 
-
-
-\section{Experimental Setup}
 
 \section{Results}
 
@@ -381,7 +394,17 @@ The resulting procedure (Algorithm~\ref{alg:sac}) alternates a single environmen
 \section{Discussion}
 
 \subsection{Soft Actor-Critic (SAC)}
-SAC inherits three properties that matter for the comparison in this report. First, the stochastic actor and the entropy bonus give it a built-in exploration mechanism, in contrast to TD3 and DDPG which rely on external action noise. Second, the off-policy formulation makes it considerably more sample-efficient than on-policy algorithms such as PPO, since every transition in $\mathcal{D}$ contributes to many gradient updates. Third, because the policy is parameterised directly rather than as the $\arg\max$ of a Q-function, SAC is naturally suited to continuous action spaces, whereas DQN in its original form is restricted to discrete actions. The cost is a higher per-iteration compute footprint: each update touches four networks ($V_\psi$, $V_{\bar\psi}$, $Q_{\theta_1}$, $Q_{\theta_2}$) plus the actor, and requires a fresh policy sample for the value and policy losses.
+SAC's stochastic actor and entropy bonus give it a built-in exploration mechanism, in contrast to the additive action noise used by TD3 and DDPG, and its off-policy formulation makes it considerably more sample-efficient than PPO. The cost is a higher per-iteration compute footprint: each update touches four networks ($V_\psi$, $V_{\bar\psi}$, $Q_{\theta_1}$, $Q_{\theta_2}$) plus the actor, and requires a fresh policy sample for the value and policy losses. These properties play out cleanly on Pendulum-v1, where SAC attains the best mean return of any algorithm in our benchmark, but they were not enough to solve MountainCarContinuous-v0 out of the box.
+
+\paragraph{Vanilla SAC stalls at zero return on MountainCarContinuous.}
+With the default hyperparameters from \citet{haarnoja2018soft}, our implementation never escaped a trivial ``do nothing'' policy on MountainCarContinuous, plateauing at an evaluation return of approximately zero. Two compounding issues, neither obvious from the paper, were responsible.
+
+First, the uniform-random warmup phase essentially never reaches the goal. Per-step iid actions in $[-1, 1]$ produce a velocity standard deviation of $\sigma_v \approx 0.028$, well below the $\sim 0.07$ peak velocity required to climb out of the valley. Empirically, across 25 warmup episodes the goal was reached zero times and the maximum position attained was $-0.21$ (the goal is at $+0.45$). Because the replay buffer never sees a positive reward, the policy correctly identifies that the action-energy penalty $-0.1\,a_t^2$ is minimised by inaction and converges there.
+
+Second, the standard discount $\gamma = 0.99$ effectively hides the $+100$ terminal bonus. With $\sim 500$ steps required to reach the goal from the start, the discounted goal value is $0.99^{500} \cdot 100 \approx 0.66$, comparable to the cumulative action-cost penalty. Even when goal-reaching transitions enter the buffer, the bootstrapped target underweights them relative to the per-step cost.
+
+\paragraph{Two hyperparameter changes are sufficient.}
+Both issues can be addressed without modifying the algorithm. We hold each warmup action for ten consecutive environment steps (\texttt{warmup\_action\_repeat}$=10$), which lets random actions accumulate enough momentum to actually escape the valley; this raises the per-episode goal-reach rate during warmup from $0\%$ to roughly $70\%$, so the buffer is seeded with informative transitions. We then raise the discount to $\gamma = 0.9999$, restoring the discounted goal value to $\approx 95$ and ensuring that the terminal bonus dominates the integrated action penalty.
 
 \section{Conclusion}
 
