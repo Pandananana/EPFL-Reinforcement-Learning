@@ -57,11 +57,12 @@ def cmd_final(args):
         total_episodes=args.total_episodes,
         params_path=None,
         n_jobs=args.n_jobs,
+        vanilla=getattr(args, "vanilla", False),
     )
 
 
 def cmd_plot(args):
-    plot_env(args.env)
+    plot_env(args.env, tag="vanilla" if getattr(args, "vanilla", False) else "")
 
 
 def cmd_play(args):
@@ -76,6 +77,13 @@ def cmd_play(args):
 
 
 def cmd_all(args):
+    if getattr(args, "vanilla", False):
+        # Vanilla is untuned by definition, so there is no sweep phase.
+        print(f"== Phase 1: vanilla (paper-default) final runs on {args.env} ==")
+        cmd_final(args)
+        print(f"\n== Phase 2: plot {args.env} (vanilla) ==")
+        cmd_plot(args)
+        return
     print(f"== Phase 1: sweep on {args.env} ==")
     cmd_sweep(args)
     print(f"\n== Phase 2: multi-seed final runs on {args.env} ==")
@@ -104,10 +112,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     sp.add_argument("--total-episodes", type=int, default=None)
     sp.add_argument("--n-jobs", type=int, default=3)
+    sp.add_argument("--vanilla", action="store_true",
+                    help="Paper-default hyperparameters, untuned/unmodified. "
+                    "Writes results/<env>_vanilla_seed*.csv (tuned results untouched).")
     sp.set_defaults(func=cmd_final)
 
     sp = sub.add_parser("plot", help="Plot per-env multi-seed eval curves.")
     sp.add_argument("--env", default="Pendulum-v1")
+    sp.add_argument("--vanilla", action="store_true",
+                    help="Plot the vanilla runs (<env>_vanilla_seed*.csv).")
     sp.set_defaults(func=cmd_plot)
 
     sp = sub.add_parser("play", help="Render a trained policy in a window.")
@@ -129,6 +142,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--n-jobs", type=int, default=4)
     sp.add_argument("--seed", type=int, default=0)
     sp.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
+    sp.add_argument("--vanilla", action="store_true",
+                    help="Skip the sweep; run untuned paper-default benchmark "
+                    "(final + plot) into the _vanilla namespace.")
     sp.set_defaults(func=cmd_all)
 
     return p

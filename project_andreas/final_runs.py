@@ -19,11 +19,29 @@ DEFAULT_FINAL_EPISODES = {
     "MountainCarContinuous-v0": 200,
 }
 
+# Paper-faithful "vanilla" config: SAC Table 1 (arXiv:1801.01290) verbatim, no
+# sweep tuning and no MCC-specific fixes. These values equal the TrainConfig
+# defaults, but we pass them explicitly so the vanilla benchmark stays pinned to
+# the paper even if a default drifts later. warmup_action_repeat is left at the
+# TrainConfig default of 1 (the paper's per-step iid uniform warmup) -- the whole
+# point of the vanilla run is to show behaviour WITHOUT that fix.
+PAPER_DEFAULTS = {
+    "lr": 3e-4,
+    "gamma": 0.99,
+    "tau": 0.005,
+    "alpha": 0.2,
+    "batch_size": 256,
+    "hidden_dim": 256,
+}
 
-def _run_one(env_name: str, seed: int, total_episodes: int, params: dict) -> str:
+
+def _run_one(
+    env_name: str, seed: int, total_episodes: int, params: dict, tag: str = ""
+) -> str:
     torch.set_num_threads(1)
-    log_path = f"results/{env_name}_seed{seed}.csv"
-    ckpt_path = f"models/{env_name}_seed{seed}.pt"
+    suffix = f"_{tag}" if tag else ""
+    log_path = f"results/{env_name}{suffix}_seed{seed}.csv"
+    ckpt_path = f"models/{env_name}{suffix}_seed{seed}.pt"
     cfg = TrainConfig(
         env_name=env_name,
         seed=seed,
@@ -43,28 +61,38 @@ def run_final(
     total_episodes: int | None,
     params_path: str | None,
     n_jobs: int,
+    vanilla: bool = False,
 ) -> None:
-    params_path = params_path or f"results/best_{env_name}.json"
-    with open(params_path) as f:
-        payload = json.load(f)
-    params = payload["best_params"]
+    # Vanilla: paper-default params + a "_vanilla" filename tag, so tuned results
+    # (results/<env>_seed*.csv, models/<env>_seed*.pt) are never clobbered.
+    if vanilla:
+        params = dict(PAPER_DEFAULTS)
+        tag = "vanilla"
+    else:
+        params_path = params_path or f"results/best_{env_name}.json"
+        with open(params_path) as f:
+            payload = json.load(f)
+        params = payload["best_params"]
+        tag = ""
 
     total_episodes = total_episodes or DEFAULT_FINAL_EPISODES.get(env_name, 200)
 
     os.makedirs("results", exist_ok=True)
-    print(f"Final runs on {env_name} for seeds={seeds}, episodes={total_episodes}")
+    label = "vanilla (paper-default)" if vanilla else "tuned"
+    print(f"Final runs [{label}] on {env_name} for seeds={seeds}, episodes={total_episodes}")
     print(f"Params: {params}")
 
     if n_jobs <= 1 or len(seeds) == 1:
         for s in seeds:
-            _run_one(env_name, s, total_episodes, params)
+            _run_one(env_name, s, total_episodes, params, tag=tag)
         return
 
     # Each seed runs in its own process; with torch threads pinned to 1, this
     # cleanly parallelises across cores.
     with ProcessPoolExecutor(max_workers=n_jobs) as ex:
         futures = {
-            ex.submit(_run_one, env_name, s, total_episodes, params): s for s in seeds
+            ex.submit(_run_one, env_name, s, total_episodes, params, tag): s
+            for s in seeds
         }
         for fut in as_completed(futures):
             s = futures[fut]
@@ -83,6 +111,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--total-episodes", type=int, default=None)
     p.add_argument("--params", default=None, help="Path to best_<env>.json")
     p.add_argument("--n-jobs", type=int, default=3, help="Parallel seeds")
+    p.add_argument(
+        "--vanilla",
+        action="store_true",
+        help="Use paper-default hyperparameters (ignore the swept best_<env>.json) "
+        "and write to results/<env>_vanilla_seed*.csv. Untuned, unmodified benchmark.",
+    )
     return p.parse_args()
 
 
@@ -94,4 +128,5 @@ if __name__ == "__main__":
         total_episodes=args.total_episodes,
         params_path=args.params,
         n_jobs=args.n_jobs,
+        vanilla=args.vanilla,
     )

@@ -10,10 +10,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def load_seed_csvs(env_name: str, results_dir: str = "results"):
-    paths = sorted(glob(os.path.join(results_dir, f"{env_name}_seed*.csv")))
+def load_seed_csvs(env_name: str, results_dir: str = "results", tag: str = ""):
+    # tag selects a run variant, e.g. tag="vanilla" reads <env>_vanilla_seed*.csv.
+    suffix = f"_{tag}" if tag else ""
+    pattern = f"{env_name}{suffix}_seed*.csv"
+    paths = sorted(glob(os.path.join(results_dir, pattern)))
     if not paths:
-        raise FileNotFoundError(f"No CSVs found for {env_name} in {results_dir}/")
+        raise FileNotFoundError(f"No CSVs found matching {pattern} in {results_dir}/")
 
     per_seed_episodes: list[list[int]] = []
     per_seed_returns: list[list[float]] = []
@@ -35,13 +38,15 @@ def load_seed_csvs(env_name: str, results_dir: str = "results"):
     return np.asarray(episodes_ref), np.asarray(returns_per_seed), paths
 
 
-def plot_env(env_name: str, out_dir: str = "plots") -> str:
-    episodes, returns, paths = load_seed_csvs(env_name)
+def plot_env(env_name: str, out_dir: str = "plots", tag: str = "") -> str:
+    episodes, returns, paths = load_seed_csvs(env_name, tag=tag)
     mean = returns.mean(axis=0)
     std = returns.std(axis=0)
 
+    suffix = f"_{tag}" if tag else ""
+    variant = f" ({tag})" if tag else ""
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f"{env_name}.png")
+    out_path = os.path.join(out_dir, f"{env_name}{suffix}.png")
 
     plt.figure(figsize=(8, 5))
     plt.plot(episodes, mean, label=f"SAC mean (n={len(paths)} seeds)", color="#d4801f")
@@ -50,7 +55,7 @@ def plot_env(env_name: str, out_dir: str = "plots") -> str:
         plt.plot(episodes, row, alpha=0.25, linewidth=0.8, label=f"seed {i}")
     plt.xlabel("Episodes")
     plt.ylabel("Episode return")
-    plt.title(f"SAC on {env_name}")
+    plt.title(f"SAC on {env_name}{variant}")
     plt.grid(True, alpha=0.3)
     plt.legend(loc="best", fontsize=8)
     plt.tight_layout()
@@ -64,9 +69,15 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--env", default="Pendulum-v1")
     p.add_argument("--out-dir", default="plots")
+    p.add_argument(
+        "--tag",
+        default="",
+        help="Run variant to plot, e.g. 'vanilla' reads <env>_vanilla_seed*.csv "
+        "and writes plots/<env>_vanilla.png. Empty = tuned runs.",
+    )
     return p.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    plot_env(args.env, out_dir=args.out_dir)
+    plot_env(args.env, out_dir=args.out_dir, tag=args.tag)
