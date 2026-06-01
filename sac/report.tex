@@ -388,10 +388,10 @@ OFAT varies one hyperparameter while holding others at the paper default~\citep{
     \toprule
     Environment & DQN & PPO & SAC & TD3 \\
     \midrule
-    CartPole-v1               & $481.3 \pm 12.7$         & $\mathbf{500.0 \pm 0.0}$  & ---                       & ---               \\
+    CartPole-v1               & TODO         & $\mathbf{500.0 \pm 0.0}$  & ---                       & ---               \\
     Acrobot-v1                & $-86.4 \pm 8.2$          & $\mathbf-85.9 \pm 6.1$  & ---                       & ---               \\
-    MountainCar-v0            & $\mathbf{-104.7 \pm 6.3}$ & $-200.0 \pm 0.0$        & ---                       & ---               \\
-    MountainCarContinuous-v0  & ---                      & $0.0 \pm 0.0$            & $\mathbf{95.53 \pm 1.24}$   & $93.1 \pm 1.8$    \\
+    MountainCar-v0            & TODO & $-200.0 \pm 0.0$        & ---                       & ---               \\
+    MountainCarContinuous-v0  & ---                      & $0.0 \pm 0.0$            & $\mathbf{95.53 \pm 1.24}$  & TODO    \\
     Pendulum-v1               & ---                      & $-975.4 \pm 73.4$         & $\mathbf{-114.55 \pm 70.38}$ & $-148.7 \pm 11.3$ \\
     \bottomrule
   \end{tabular}
@@ -400,17 +400,12 @@ OFAT varies one hyperparameter while holding others at the paper default~\citep{
 \section{Discussion}
 
 \subsection{Soft Actor-Critic (SAC)}
+
+TODO: Update based on latest final performance results
 SAC delivers the strongest final returns in our benchmark on both continuous-control tasks (Table~\ref{tab:results}): it is the best method on Pendulum-v1 and, once tuned, on MountainCarContinuous-v0. The price is a higher per-iteration compute footprint than TD3 or PPO, since each update touches four value/critic networks ($V_\psi$, $V_{\bar\psi}$, $Q_{\theta_1}$, $Q_{\theta_2}$) plus the actor and draws a fresh policy sample for the value and policy losses (Section~\ref{sec:sac}). The two environments stress the algorithm in opposite ways: Pendulum is solved almost out of the box and is largely insensitive to tuning, whereas vanilla SAC fails outright on MountainCarContinuous and only learns after two targeted changes. We take each in turn.
 
 \paragraph{On Pendulum-v1, tuning barely helps.}
 SAC solves Pendulum-v1 essentially out of the box. With the default hyperparameters from \citet{haarnoja2018soft} the training return already converges to a near-optimal level, and the configuration selected by our sweep is almost indistinguishable from it: across all three seeds the default and tuned curves track each other throughout training (Figure~\ref{fig:sac-pendulum-tuning}). The dense per-step reward and the short, fixed 200-step horizon make the task forgiving, and SAC's entropy-driven exploration reliably finds the swing-up regardless of the exact settings. Consequently the Pendulum entry in Table~\ref{tab:results} owes far more to the algorithm than to hyperparameter search---a point reinforced by the sensitivity analysis below, where every knob except the learning rate has only a marginal effect on the final return.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.7\linewidth]{Figure/SAC/pendulum_vanilla_vs_tuned.png}
-  \caption{SAC on Pendulum-v1 with default versus tuned hyperparameters: mean training return over three seeds (shaded region $\pm 1$ std). The two curves are nearly indistinguishable, indicating that hyperparameter tuning yields little improvement on this dense-reward task.}
-  \label{fig:sac-pendulum-tuning}
-\end{figure}
 
 \paragraph{Vanilla SAC never reaches the goal on MountainCarContinuous.}
 With the same default hyperparameters, MountainCarContinuous tells the opposite story. Our implementation never reaches the goal during training: across all three seeds the return sits flat at roughly $-30$ from the first episode onward, and not one of the 600 logged episodes earns a positive return---far short of the $+80$ ``solved'' threshold. Two compounding issues, neither obvious from the paper, were responsible.
@@ -497,9 +492,44 @@ Our HPO experiments use a single training seed and 10 evaluation episodes per tr
 \appendix
 
 \section{Appendix}
-Technical appendices with additional results, figures, graphs, and proofs may be submitted with the paper submission before the full submission deadline (see above). You can upload a ZIP file for videos or code, but do not upload a separate PDF file for the appendix. There is no page limit for the technical appendices. 
 
-Note: Think of the appendix as ``optional reading'' for reviewers. The paper must be able to stand alone without the appendix; for example, adding critical experiments that support the main claims to an appendix is inappropriate. 
+\subsection{Comparing Training Curves}
+\subsubsection{Untuned (Vanilla) Algorithms}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{compare_vanilla_CartPole-v1.png}
+    \caption{Vanilla training curves on CartPole-v1, comparing the algorithms that support a discrete action space (DQN and PPO). Each curve is the across-seed mean of the rolling-mean episode return.}
+    \label{fig:compare-vanilla-cartpole}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{compare_vanilla_Acrobot-v1.png}
+    \caption{Vanilla training curves on Acrobot-v1, comparing the discrete-action algorithms (DQN and PPO). Each curve is the across-seed mean of the rolling-mean episode return.}
+    \label{fig:compare-vanilla-acrobot}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{compare_vanilla_MountainCar-v0.png}
+    \caption{Vanilla training curves on MountainCar-v0, comparing the discrete-action algorithms (DQN and PPO). Each curve is the across-seed mean of the rolling-mean episode return.}
+    \label{fig:compare-vanilla-mountaincar}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{compare_vanilla_Pendulum-v1.png}
+    \caption{Vanilla training curves on Pendulum-v1, comparing the continuous-action algorithms (SAC, TD3 and PPO). Each curve is the across-seed mean of the rolling-mean episode return.}
+    \label{fig:compare-vanilla-pendulum}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{compare_vanilla_MountainCarContinuous-v0.png}
+    \caption{Vanilla training curves on MountainCarContinuous-v0, comparing the continuous-action algorithms (SAC, TD3 and PPO). Each curve is the across-seed mean of the rolling-mean episode return.}
+    \label{fig:compare-vanilla-mountaincarcontinuous}
+\end{figure}
 
 \subsection{PPO Hyperparameter Experiments}
 \subsubsection{One factor at a time}
@@ -609,6 +639,21 @@ Note: Think of the appendix as ``optional reading'' for reviewers. The paper mus
   \label{fig:random-eval}
 \end{figure}
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\linewidth]{Figure/PPO/MountainCar-v0_5.png}
+  \caption{Top-3 trials by final eval score.}
+  \label{fig:hpo-curves_random_search}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\linewidth]{Figure/PPO/MountainCarContinuous-v0_2.png}
+  \caption{Top-3 trials by final eval score.}
+  \label{fig:hpo-curves_random_search}
+\end{figure}
+
+
 % \begin{figure}[H]
 %   \centering
 %   \begin{subfigure}[b]{0.49\linewidth}
@@ -632,6 +677,44 @@ Note: Think of the appendix as ``optional reading'' for reviewers. The paper mus
   \caption{Optuna fANOVA hyperparameter importances on Pendulum-v1.}
   \label{fig:importances}
 \end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.65\linewidth]{Figure/PPO/MountainCar-v0_6.png}
+  \caption{Optuna fANOVA hyperparameter importances on Pendulum-v1.}
+  \label{fig:importances}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.65\linewidth]{Figure/PPO/MountainCarContinuous-v0_1.png}
+  \caption{Optuna fANOVA hyperparameter importances on Pendulum-v1.}
+  \label{fig:importances}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\linewidth]{Figure/PPO/Pendulum-v1_6.png}
+  \caption{Top-3 trials by final eval score.}
+  \label{fig:hpo-curves_tpe}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{Figure/PPO/Pendulum-v1_8.png}
+  \caption{Best Optuna TPE trial on \texttt{Pendulum-v1} (trial~9, seed~0).
+    Same evaluation protocol as Figure~\ref{fig:random-eval}.
+    Final trial score: $-954.8$.}
+  \label{fig:optuna-top3}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\linewidth]{Figure/PPO/MountainCarContinuous-v0_3.png}
+  \caption{Top-3 trials by final eval score.}
+  \label{fig:hpo-curves_tpe}
+\end{figure}
+
 
 \begin{figure}[H]
   \centering
@@ -666,22 +749,14 @@ Note: Think of the appendix as ``optional reading'' for reviewers. The paper mus
   \end{tabular}
 \end{table}
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.7\linewidth]{Figure/PPO/Pendulum-v1_6.png}
-  \caption{Top-3 trials by final eval score.}
-  \label{fig:hpo-curves_tpe}
-\end{figure}
+\subsection{SAC Hyperparameter Experiments}
 
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.85\linewidth]{Figure/PPO/Pendulum-v1_8.png}
-  \caption{Best Optuna TPE trial on \texttt{Pendulum-v1} (trial~9, seed~0).
-    Same evaluation protocol as Figure~\ref{fig:random-eval}.
-    Final trial score: $-954.8$.}
-  \label{fig:optuna-top3}
+\begin{figure}
+    \centering
+    \includegraphics[width=1\linewidth]{pendulum_vanilla_vs_tuned.png}
+    \caption{SAC on Pendulum-v1 with default versus tuned hyperparameters: mean training return over three seeds (shaded region $\pm 1$ std). The two curves are nearly indistinguishable, indicating that hyperparameter tuning yields little improvement on this dense-reward task.}
+    \label{fig:sac-pendulum-tuning}
 \end{figure}
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
