@@ -1,9 +1,3 @@
-"""Evaluate trained SAC checkpoints on held-out env seeds.
-
-Loads every models/<env>_seed*.pt for each env, runs each checkpoint for
-`--episodes` deterministic episodes on fresh env seeds, and writes the
-combined mean ± std per env to results/eval.csv.
-"""
 from __future__ import annotations
 
 import argparse

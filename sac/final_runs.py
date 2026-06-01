@@ -1,8 +1,3 @@
-"""Validate the sweep's best params with multiple seeds for the final plots.
-
-This is the half of the pipeline that satisfies the "average across at least 3
-seeds" requirement from the project brief.
-"""
 from __future__ import annotations
 
 import argparse
@@ -11,7 +6,6 @@ import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import torch
-
 from train import TrainConfig, train
 
 DEFAULT_FINAL_EPISODES = {
@@ -19,12 +13,6 @@ DEFAULT_FINAL_EPISODES = {
     "MountainCarContinuous-v0": 200,
 }
 
-# Paper-faithful "vanilla" config: SAC Table 1 (arXiv:1801.01290) verbatim, no
-# sweep tuning and no MCC-specific fixes. These values equal the TrainConfig
-# defaults, but we pass them explicitly so the vanilla benchmark stays pinned to
-# the paper even if a default drifts later. warmup_action_repeat is left at the
-# TrainConfig default of 1 (the paper's per-step iid uniform warmup) -- the whole
-# point of the vanilla run is to show behaviour WITHOUT that fix.
 PAPER_DEFAULTS = {
     "lr": 3e-4,
     "gamma": 0.99,

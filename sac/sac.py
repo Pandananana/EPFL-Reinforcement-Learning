@@ -1,9 +1,3 @@
-"""Soft Actor-Critic (Haarnoja et al. 2018), the classic version from
-"Soft Actor-Critic: Off-Policy Maximum Entropy Deep RL with a Stochastic Actor"
-(arXiv:1801.01290). Algorithm 1 in the paper.
-
-Networks live here. The training loop lives in train.py.
-"""
 from __future__ import annotations
 
 import numpy as np

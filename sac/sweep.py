@@ -1,20 +1,3 @@
-"""Optuna hyperparameter sweep for SAC.
-
-Search phase: 1 seed per trial (fast). The follow-up validation with 3 seeds for
-the final report lives in final_runs.py.
-
-Per-env search spaces live in `SUGGEST_PARAMS`. MCC needs two extra knobs that
-Pendulum doesn't (gamma very close to 1, and a warmup action repeat) -- see
-train.py for why iid random warmup fails on momentum-dominated envs.
-
-Parallelism is process-based: n_jobs>1 fans out to that many spawn subprocesses,
-each running n_jobs=1 internally and coordinating via the shared SQLite study
-(MaxTrialsCallback stops every worker once the global trial budget is met).
-Threads don't work for this workload -- the GIL serializes env stepping and
-replay sampling, so Optuna's thread-based n_jobs caps total CPU at ~3x even on
-a 32-core box. Default n_jobs=4 is tuned for an M4 Air; on a workstation set
-it to ~physical cores (not SMT threads).
-"""
 from __future__ import annotations
 
 import argparse
@@ -31,7 +14,6 @@ from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 from optuna.study import MaxTrialsCallback
 from optuna.trial import TrialState
-
 from train import TrainConfig, train
 
 # Each worker process owns one tqdm row (single in-flight trial per process).

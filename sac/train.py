@@ -1,4 +1,3 @@
-"""Training loop. Called by single-run, sweep, and final-run scripts."""
 from __future__ import annotations
 
 import csv
@@ -10,8 +9,9 @@ from typing import Callable
 import gymnasium as gym
 import numpy as np
 import torch
-from sac import SAC, ReplayBuffer
 from tqdm.auto import tqdm
+
+from sac import SAC, ReplayBuffer
 
 
 @dataclass
@@ -19,20 +19,12 @@ class TrainConfig:
     env_name: str = "Pendulum-v1"
     seed: int = 0
     total_episodes: int = 200
-    start_steps: int = 10_000         # uniform-random actions before policy kicks in
-    update_after: int = 1_000         # don't train until buffer has some data
-    # Repeat each warmup random action for this many env steps. K=1 = per-step
-    # iid uniform (paper default). K>1 keeps actions temporally correlated during
-    # warmup, which is necessary on momentum-dominated envs like
-    # MountainCarContinuous: iid random forces average to ~0 and the car never
-    # builds enough velocity to reach the goal, so the buffer never sees a
-    # positive reward and the policy collapses to "do nothing". K=10 makes
-    # warmup explore the full velocity range. Does not change the SAC algorithm.
+    start_steps: int = 10_000   
+    update_after: int = 1_000        
     warmup_action_repeat: int = 1
-    update_every: int = 1             # one gradient step per env step
+    update_every: int = 1          
     eval_every: int = 1_000
     n_eval_episodes: int = 5
-    # Hyperparams that the sweep will mutate:
     buffer_size: int = 1_000_000
     batch_size: int = 256
     hidden_dim: int = 256
@@ -40,13 +32,10 @@ class TrainConfig:
     tau: float = 0.005
     lr: float = 3e-4
     alpha: float = 0.2
-    # Plumbing:
     device: str = "cpu"
     log_path: str | None = None
     checkpoint_path: str | None = None
     verbose: bool = False
-    # When set, render a per-step tqdm bar at this terminal row. Callers running
-    # parallel trials hand out unique positions so the bars stack.
     progress_position: int | None = None
     progress_desc: str | None = None
 
@@ -77,11 +66,6 @@ def train(
     cfg: TrainConfig,
     progress_callback: Callable[[int, float], bool] | None = None,
 ) -> list[dict]:
-    """Run one SAC training session. Returns the list of eval log rows.
-
-    `progress_callback(step, eval_return) -> stop_flag` lets the caller (Optuna)
-    early-stop a trial.
-    """
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
 

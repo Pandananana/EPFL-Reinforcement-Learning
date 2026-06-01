@@ -1,28 +1,14 @@
-"""End-to-end orchestrator: sweep -> final runs -> plot.
-
-Examples:
-    # Full pipeline on Pendulum (quickest):
-    python main.py all --env Pendulum-v1
-
-    # Just smoke-test the implementation:
-    python main.py smoke
-
-    # Run one phase:
-    python main.py sweep --env Pendulum-v1 --n-trials 30
-    python main.py final --env Pendulum-v1
-    python main.py plot  --env Pendulum-v1
-"""
 from __future__ import annotations
 
 import argparse
 
 import torch
-
 from final_runs import run_final
 from play import play
-from plot import plot_env
 from sweep import run_sweep
 from train import TrainConfig, train
+
+from plot import plot_env
 
 
 def cmd_smoke(args):

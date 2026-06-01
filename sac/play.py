@@ -1,4 +1,3 @@
-"""Load a trained SAC checkpoint and render it on the env in a window."""
 from __future__ import annotations
 
 import argparse

@@ -1,14 +1,3 @@
-"""Overlay default-vs-tuned SAC training curves on Pendulum-v1.
-
-Produces the figure referenced in the SAC discussion of report.tex
-(\\label{fig:sac-pendulum-tuning}): both variants' mean training return
-across seeds with a +/-1 std band, showing that tuning barely changes
-the result on this dense-reward task.
-
-Reads results/Pendulum-v1_vanilla_seed*.csv (default hyperparameters) and
-results/Pendulum-v1_seed*.csv (sweep-selected), and writes
-plots/pendulum_vanilla_vs_tuned.png.
-"""
 from __future__ import annotations
 
 import argparse

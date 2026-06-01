@@ -1,4 +1,3 @@
-"""Plot eval-return curves averaged across seeds (mean ± std)."""
 from __future__ import annotations
 
 import argparse

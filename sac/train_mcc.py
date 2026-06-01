@@ -1,22 +1,4 @@
-"""Hand-tuned MCC training run.
 
-Two fixes needed beyond defaults; diagnosed empirically:
-
-1. warmup_action_repeat=10. The per-step iid uniform random actions used by the
-   paper's warmup never reach the goal on MCC (max position seen across 25
-   episodes was ~-0.21, goal is +0.45). The action-energy variance per step is
-   too small to build the velocity required to escape the valley. Repeating
-   each random action for 10 steps concentrates the variance so warmup
-   reliably reaches max velocity (sigma_vel ~ 0.087 > max_vel 0.07). This
-   doesn't touch the SAC update rule.
-
-2. gamma=0.9999. With the project default gamma=0.99 and ~500 steps to reach
-   the goal, the +100 reward gets discounted to ~0.66 -- on par with the
-   accumulated discounted action penalty. The agent rationally learns "do
-   nothing". gamma=0.9999 brings the discounted goal value to ~95.
-
-alpha is kept at 0.2 (paper's working range; equivalent to reward_scale=5).
-"""
 from __future__ import annotations
 
 import sys
