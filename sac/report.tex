@@ -208,72 +208,68 @@ Acrobot combines the underactuated swing-up challenge of Pendulum with the highe
 %-----------------------------------------------------------------------------------------------------------
 \section{Algorithms}
 \subsection{Deep Q-Learning (DQN)}
+Deep Q-Learning (DQN) is a value-based, off-policy algorithm for discrete action spaces which was introduced by researchers at DeepMind in 2013 \citep{mnih2013playing} and further developed two years later \citep{mnih2015human} as a variant of Q-learning \citep{watkins1992q} based on deep neural networks. Although DQN was not the first algorithm to implement neural networks as function approximators in a reinforcement learning setting, it was the first one to do so in an efficient, end-to-end manner, solving most of the shortcomings of previous approaches like Tesauro's TD-gammon \citep{tesauro1995temporal}. 
 
+The main issues DQN addressed were sample correlation and the non-stationarity of the underlying distribution, which both arise from the fact that the data samples in a reinforcement learning setting are inherently correlated and the data distribution is subject to change while training the algorithm (as opposed to supervised learning where the data samples are assumed to be independent and coming from the same, fixed distribution). The algorithm circumvents these problems by implementing an experience replay buffer \citep{lin1992reinforcement} which allows the model to sample mini-batches of previous transitions randomly during the training procedure, thus eliminating the sample correlation and smoothing the data distribution over past experiences.
 
-\subsection{Proximal policy optimization (PPO)}
-\subsubsection{Baseline Algorithm}
-Proximal Policy Optimization \citep{schulman2017proximal} is an on-policy actor-critic algorithm for continuous and discrete action spaces. It addresses a core difficulty in policy gradient methods: taking too large an update step can collapse performance, yet constraining updates via explicit KL penalties (as in TRPO \citep{....}) is computationally expensive. PPO-Clip resolves this with a simple clipped surrogate objective that implicitly enforces a trust region, making it both stable and easy to implement.
+For the project we purposefully based our implementation on the original algorithm (outlined in Algorithm \ref{alg:dqn}) as implemented in \citep{mnih2013playing}, without the addition of a target network (put forward in \citep{mnih2015human}) in order to draw sharper contrasts with the other neural network based algorithms examined in this paper (namely TD3 and SAC). The only significant modification we made to the algorithm was the substitution of a convolutional neural network architecture for a multilayer perceptron one since our test environments returned states as numerical values as opposed to images like in the original Atari setting.
 
-\paragraph{Maximum-entropy objective and policy ratio:} Let $\pi_{\theta_k}$ denote the behaviour policy that collected rollout $\mathcal{D}_k$. PPO measures how much the updated policy $\pi_\theta$ deviates from $\pi_{\theta_k}$ via the probability ratio
-\begin{equation}
-    r_t(\theta) \;=\; \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_k}(a_t \mid s_t)},
-\end{equation}
-which equals one when $\theta = \theta_k$ and drifts away as the policy changes. The clipped surrogate objective is
-\begin{equation}
-    L^{\mathrm{CLIP}}(\theta)
-    \;=\; \mathbb{E}_{t \sim \mathcal{D}_k}
-    \!\left[
-        \min\!\left(
-            r_t(\theta)\,\hat{A}_t,\;
-            \mathrm{clip}\!\left(r_t(\theta),\,1-\varepsilon,\,1+\varepsilon\right)\hat{A}_t
-        \right)
-    \right],
-    \label{eq:ppo-clip}
-\end{equation}
-where $\varepsilon$ (typically $0.2$) controls how far the ratio is allowed to move. The $\min$ makes the objective a lower bound: when $\hat{A}_t > 0$, the update is prevented from becoming too optimistic by capping $r_t$ at $1+\varepsilon$; when $\hat{A}_t < 0$, the ratio is floored at $1-\varepsilon$. This achieves a trust-region effect without solving a constrained optimisation problem.
-
-\paragraph{Generalized Advantage Estimation:} Advantages $\hat{A}_t$ are estimated via GAE-$\lambda$ \citep{...}, which balances bias and variance through a weighted sum of TD residuals. For $\delta_t = r_t + \gamma V(s_{t+1})(1-d_t) - V(s_t)$, where $d_t$ is a terminal flag,
-\begin{equation}
-    \hat{A}_t \;=\; \sum_{l=0}^{T-t-1} (\gamma\lambda)^l\,\delta_{t+l},
-    \label{eq:gae}
-\end{equation}
-computed backward over the rollout of horizon $T$. The corresponding return target for the value function is $\hat{R}_t = \hat{A}_t + V_{\theta_k}(s_t)$. Setting $\lambda = 1$ recovers the full Monte Carlo return (high variance, low bias), while $\lambda = 0$ reduces to a one-step TD target (low variance, higher bias); intermediate values trade off these extremes.
-
-\paragraph{Combined loss:} The actor and critic share a single neural network (separate output heads), so all parameters are updated jointly. Each stochastic gradient step minimises
-\begin{equation}
-    \mathcal{L}(\theta)
-    \;=\; -L^{\mathrm{CLIP}}(\theta)
-    \;+\; c_v\,\mathbb{E}_t\!\left[\left(V_\theta(s_t) - \hat{R}_t\right)^2\right]
-    \;-\; c_e\,\mathbb{E}_t\!\left[\mathcal{H}\!\left(\pi_\theta(\cdot \mid s_t)\right)\right],
-    \label{eq:ppo-loss}
-\end{equation}
-where $c_v$ and $c_e$ weight the value loss and an entropy bonus, respectively. The entropy term encourages exploration by penalising premature collapse of the action distribution.
-
-% \paragraph{Algorithm:} PPO alternates between collecting on-policy rollouts and performing multiple epochs of minibatch gradient descent on the same data (Algorithm~\ref{alg:ppo}). Unlike off-policy methods, the rollout buffer is discarded after each update cycle, so all data used for training was generated by the current policy. To keep the probability ratios $r_t(\theta)$ well-defined, the log-probabilities $\log\pi_{\theta_k}(a_t \mid s_t)$ are stored at collection time and held fixed during the $K$ update epochs. Advantages are normalised to zero mean and unit variance within each minibatch to stabilise training, and gradient norms are clipped to prevent excessively large update steps.
-
-\begin{algorithm}[t]
-\caption{Proximal Policy Optimization -- PPO-Clip \citep{schulman2017proximal}}
-\label{alg:ppo}
+\begin{algorithm}
+\caption{Deep Q-learning with Experience Replay (based on \citep{mnih2013playing})}
+\label{alg:dqn}
 \begin{algorithmic}
-\State Initialise actor-critic parameters $\theta$ and empty rollout buffer $\mathcal{B}$.
-\While{total environment steps not reached}
-    \For{each environment step (up to horizon $T$)}
-        \State Sample $a_t \sim \pi_\theta(\cdot \mid s_t)$;\; store $(s_t, a_t, r_t, d_t, \log\pi_\theta(a_t \mid s_t))$ in $\mathcal{B}$
+\State Initialize replay memory $D$ to capacity $N$
+\State Initialize action-value function $Q$ with random weights $\theta$
+\For{episode $= 1, M$}
+    \State Initialize starting state $s_1$ from the environment
+    \For{$t = 1, T$}
+        \State With probability $\epsilon$ select a random action $a_t$
+        \State otherwise select $a_t = \arg\max_a Q(s_t, a; \theta)$
+        \State Execute action $a_t$ in emulator and observe reward $r_t$ and next state $s_{t+1}$
+        \State Store transition $(s_t, a_t, r_t, s_{t+1})$ in $D$
+        \State Sample random minibatch of transitions $(s_j, a_j, r_j, s_{j+1})$ from $D$
+        \State Set $y_j = 
+        \begin{cases} 
+        r_j & \text{for terminal } s_{j+1}\\
+        r_j + \gamma \max_{a'} Q(s_{j+1}, a'; \theta) & \text{for non-terminal } s_{j+1}
+        \end{cases}$
+        \State Perform a gradient descent step on $(y_j - Q(s_j, a_j\theta))^2$
     \EndFor
-    \State Bootstrap $V_\theta(s_T)$;\; compute $\hat{A}_t$ and $\hat{R}_t$ via GAE-$\lambda$ (backward pass over $\mathcal{B}$)
-    \For{$K$ epochs over $\mathcal{B}$}
-        \For{each minibatch of size $M$}
-            \State Normalise $\hat{A}_t$ to zero mean and unit variance on the minibatch
-            \State Compute $r_t(\theta) = \pi_\theta(a_t \mid s_t)\,/\,\pi_{\theta_k}(a_t \mid s_t)$
-            \State Evaluate $L^{\mathrm{CLIP}}$, value loss, and entropy bonus (Eq.~\ref{eq:ppo-loss})
-            \State $\theta \gets \theta - \alpha\,\hat\nabla_\theta\,\mathcal{L}(\theta)$;\; clip $\|\nabla_\theta \mathcal{L}\|_2$ at max norm
-        \EndFor
-    \EndFor
-    \State Discard $\mathcal{B}$ (on-policy: data is no longer valid after $\theta$ has changed)
-\EndWhile
+\EndFor
 \end{algorithmic}
 \end{algorithm}
-\subsubsection{Hyperparameter Optimization}
+
+\subsection{Twin Delayed Deep Deterministic Policy Gradient (TD3)}
+Twin Delayed Deep Deterministic Policy Gradient is an off-policy actor-critic algorithm \citep{fujimoto2018addressing} for continuous action spaces which serves as an upgrade to the then state of the art actor-critic method Deep Deterministic Policy Gradient (DDPG) \citep{lillicrap2019continuouscontroldeepreinforcement}, building upon it while addressing its main shortcomings. The main problem TD3 addresses is overestimation bias which is a well documented property of Q-learning in discrete settings \citep{thrun2014issues} but also present in actor-critic methods, arising from the repeated maximization of noisy value estimates resulting in constant overestimation which is exacerbated by the bootstrapping nature of temporal difference learning. 
+
+TD3 aims to reduce the inherent overestimation bias by the introduction of "clipped double Q-learning" which entails the usage of two independent critic networks which are used in the Bellman update by taking the minimum of their output, thus binding the estimate for the value of the future state when updating the target (line 9, Algorithm \ref{alg:td3}). In addition to the implementation of the twin critics TD3 reduces the function approximation error by the application of target networks \citep{mnih2015human} and the novel idea of delayed policy updates which means updating the actor less frequently than the critics resulting in lower variance value updates and thus higher quality policy updates (line 10-13, in Algorithm \ref{alg:td3}). Last but not least TD3 tackles the problem inherent in DDPG and all methods equipped with deterministic policies, namely their tendency to overfit to narrow peaks in the value estimate, which is solved by a form of regularisation called target policy smoothing. This works similarly to the learning update used in SARSA \citep{sutton1998reinforcement}, by adding a tiny bit of random noise to the action selected by the target policy before showing it to the critic (line 8, Algorithm \ref{alg:td3}). The method reinforces the idea that similar actions should have similar values, by enforcing the critic to evaluate a small area around the target action instead of fixating on "narrow spikes", thus smootning the value estimate.
+
+In our implementation of TD3 we stuck to the algorithm outlined in \citep{fujimoto2018addressing} as shown in Algorithm \ref{alg:td3}.
+
+\begin{algorithm}
+\caption{Twin Delayed Deep Deterministic Policy Gradient \citep{fujimoto2018addressing}}
+\label{alg:td3}
+\begin{algorithmic}[1]
+\State Initialize critic networks $Q_{\theta_1}$, $Q_{\theta_2}$, and actor network $\pi_\phi$ with random parameters $\theta_1, \theta_2, \phi$
+\State Initialize target networks $\theta'_1 \gets \theta_1, \theta'_2 \gets \theta_2, \phi' \gets \phi$
+\State Initialize replay buffer $\mathcal{B}$
+\For{$t = 1$ \textbf{to} $T$}
+    \State Select action with exploration noise $a \sim \pi_\phi(s) + \epsilon$, where $\epsilon \sim \mathcal{N}(0, \sigma)$, and observe reward $r$ and new state $s'$
+    \State Store transition tuple $(s, a, r, s')$ in $\mathcal{B}$
+    \State Sample mini-batch of $N$ transitions $(s, a, r, s')$ from $\mathcal{B}$
+    \State $\tilde{a} \gets \pi_{\phi'}(s') + \epsilon$, where $\epsilon \sim \text{clip}(\mathcal{N}(0, \tilde{\sigma}), -c, c)$
+    \State $y \gets r + \gamma \min_{i=1,2} Q_{\theta'_i}(s', \tilde{a})$
+    \State Update critics $\theta_i \gets \arg\min_{\theta_i} N^{-1} \sum \left( y - Q_{\theta_i}(s, a) \right)^2$
+    \If{$t \bmod d = 0$}
+        \State Update $\phi$ by the deterministic policy gradient:
+        \Statex \qquad $\nabla_\phi J(\phi) = N^{-1} \sum \nabla_a Q_{\theta_1}(s, a) \big|_{a=\pi_\phi(s)} \nabla_\phi \pi_\phi(s)$
+        \State Update target networks:
+        \Statex \qquad $\theta'_i \gets \tau \theta_i + (1 - \tau)\theta'_i$
+        \Statex \qquad $\phi' \gets \tau \phi + (1 - \tau)\phi'$
+    \EndIf
+\EndFor
+\end{algorithmic}
+\end{algorithm}
 
 \subsection{Soft Actor-Critic (SAC)}
 \label{sec:sac}
@@ -365,10 +361,120 @@ With dense rewards the picture flips. About 48 percent of trials reach a loose `
 \paragraph{Takeaway.}
 The hyperparameters that drive SAC's performance are environment dependent rather than universal. Exploration-side knobs (\texttt{warmup\_action\_repeat} and a careful $\gamma$) dominate on sparse-reward MountainCarContinuous, while optimization-side knobs ($\eta$, $\gamma$, $\tau$) dominate on dense-reward Pendulum. The entropy temperature $\alpha$ has only a small effect on either environment, which lines up with $\alpha$ being precisely the parameter SAC's automatic-temperature variant is designed to remove from the tuning loop.
 
+\subsection{Proximal policy optimization (PPO)}
+\subsubsection{Baseline Algorithm}
+Proximal Policy Optimization \citep{schulman2017proximal} is an on-policy actor-critic algorithm for continuous and discrete action spaces. It addresses a core difficulty in policy gradient methods: taking too large an update step can collapse performance, yet constraining updates via explicit KL penalties (as in TRPO \citep{....}) is computationally expensive. PPO-Clip resolves this with a simple clipped surrogate objective that implicitly enforces a trust region, making it both stable and easy to implement.
 
+\paragraph{Maximum-entropy objective and policy ratio:} Let $\pi_{\theta_k}$ denote the behaviour policy that collected rollout $\mathcal{D}_k$. PPO measures how much the updated policy $\pi_\theta$ deviates from $\pi_{\theta_k}$ via the probability ratio
+\begin{equation}
+    r_t(\theta) \;=\; \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_k}(a_t \mid s_t)},
+\end{equation}
+which equals one when $\theta = \theta_k$ and drifts away as the policy changes. The clipped surrogate objective is
+\begin{equation}
+    L^{\mathrm{CLIP}}(\theta)
+    \;=\; \mathbb{E}_{t \sim \mathcal{D}_k}
+    \!\left[
+        \min\!\left(
+            r_t(\theta)\,\hat{A}_t,\;
+            \mathrm{clip}\!\left(r_t(\theta),\,1-\varepsilon,\,1+\varepsilon\right)\hat{A}_t
+        \right)
+    \right],
+    \label{eq:ppo-clip}
+\end{equation}
+where $\varepsilon$ (typically $0.2$) controls how far the ratio is allowed to move. The $\min$ makes the objective a lower bound: when $\hat{A}_t > 0$, the update is prevented from becoming too optimistic by capping $r_t$ at $1+\varepsilon$; when $\hat{A}_t < 0$, the ratio is floored at $1-\varepsilon$. This achieves a trust-region effect without solving a constrained optimisation problem.
 
+\paragraph{Generalized Advantage Estimation:} Advantages $\hat{A}_t$ are estimated via GAE-$\lambda$ \citep{...}, which balances bias and variance through a weighted sum of TD residuals. For $\delta_t = r_t + \gamma V(s_{t+1})(1-d_t) - V(s_t)$, where $d_t$ is a terminal flag,
+\begin{equation}
+    \hat{A}_t \;=\; \sum_{l=0}^{T-t-1} (\gamma\lambda)^l\,\delta_{t+l},
+    \label{eq:gae}
+\end{equation}
+computed backward over the rollout of horizon $T$. The corresponding return target for the value function is $\hat{R}_t = \hat{A}_t + V_{\theta_k}(s_t)$. Setting $\lambda = 1$ recovers the full Monte Carlo return (high variance, low bias), while $\lambda = 0$ reduces to a one-step TD target (low variance, higher bias); intermediate values trade off these extremes.
 
-\subsection{Twin Delayed DDPG (TD3)}
+\paragraph{Combined loss:} The actor and critic share a single neural network (separate output heads), so all parameters are updated jointly. Each stochastic gradient step minimises
+\begin{equation}
+    \mathcal{L}(\theta)
+    \;=\; -L^{\mathrm{CLIP}}(\theta)
+    \;+\; c_v\,\mathbb{E}_t\!\left[\left(V_\theta(s_t) - \hat{R}_t\right)^2\right]
+    \;-\; c_e\,\mathbb{E}_t\!\left[\mathcal{H}\!\left(\pi_\theta(\cdot \mid s_t)\right)\right],
+    \label{eq:ppo-loss}
+\end{equation}
+where $c_v$ and $c_e$ weight the value loss and an entropy bonus, respectively. The entropy term encourages exploration by penalising premature collapse of the action distribution.
+
+% \paragraph{Algorithm:} PPO alternates between collecting on-policy rollouts and performing multiple epochs of minibatch gradient descent on the same data (Algorithm~\ref{alg:ppo}). Unlike off-policy methods, the rollout buffer is discarded after each update cycle, so all data used for training was generated by the current policy. To keep the probability ratios $r_t(\theta)$ well-defined, the log-probabilities $\log\pi_{\theta_k}(a_t \mid s_t)$ are stored at collection time and held fixed during the $K$ update epochs. Advantages are normalised to zero mean and unit variance within each minibatch to stabilise training, and gradient norms are clipped to prevent excessively large update steps.
+
+\begin{algorithm}[H]
+\caption{Proximal Policy Optimization -- PPO-Clip \citep{schulman2017proximal}}
+\label{alg:ppo}
+\begin{algorithmic}
+\State Initialise actor-critic parameters $\theta$ and empty rollout buffer $\mathcal{B}$.
+\While{total environment steps not reached}
+    \For{each environment step (up to horizon $T$)}
+        \State Sample $a_t \sim \pi_\theta(\cdot \mid s_t)$;\; store $(s_t, a_t, r_t, d_t, \log\pi_\theta(a_t \mid s_t))$ in $\mathcal{B}$
+    \EndFor
+    \State Bootstrap $V_\theta(s_T)$;\; compute $\hat{A}_t$ and $\hat{R}_t$ via GAE-$\lambda$ (backward pass over $\mathcal{B}$)
+    \For{$K$ epochs over $\mathcal{B}$}
+        \For{each minibatch of size $M$}
+            \State Normalise $\hat{A}_t$ to zero mean and unit variance on the minibatch
+            \State Compute $r_t(\theta) = \pi_\theta(a_t \mid s_t)\,/\,\pi_{\theta_k}(a_t \mid s_t)$
+            \State Evaluate $L^{\mathrm{CLIP}}$, value loss, and entropy bonus (Eq.~\ref{eq:ppo-loss})
+            \State $\theta \gets \theta - \alpha\,\hat\nabla_\theta\,\mathcal{L}(\theta)$;\; clip $\|\nabla_\theta \mathcal{L}\|_2$ at max norm
+        \EndFor
+    \EndFor
+    \State Discard $\mathcal{B}$ (on-policy: data is no longer valid after $\theta$ has changed)
+\EndWhile
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Hyperparameter Optimization}
+\label{sec:ppo-hpo}
+
+We study PPO's sensitivity to hyperparameters using three complementary approaches: (i) one-factor-at-a-time (OFAT) sweeps to isolate individual effects, (ii) random search as a model-free baseline, and (iii) Optuna TPE~\citep{akiba2019optuna} as a Bayesian alternative. All methods use the same evaluation protocol: after training for a fixed budget, we freeze the policy and compute the mean undiscounted return over 10 deterministic episodes. This \emph{evaluation return} serves as the trial score for ranking configurations.
+
+\paragraph{Search space.}
+Table~\ref{tab:ppo-search-space} defines the joint search space used for random and Optuna searches. We use a conservative space for easy environments (CartPole, Acrobot) and an extended space including $\gamma$, $n_{\mathrm{steps}}$, and network size for harder tasks (MountainCar, Pendulum).
+
+\begin{table}[H]
+  \centering
+  \caption{PPO joint search space for hard environments. Easy environments use a subset excluding $\gamma$, $n_{\mathrm{steps}}$, and hidden sizes.}
+  \label{tab:ppo-search-space}
+  \small
+  \begin{tabular}{llll}
+    \toprule
+    Parameter & Type & Range / Choices \\
+    \midrule
+    $\mathrm{lr}$ & log-uniform & $[5{\times}10^{-5},\, 10^{-2}]$ \\
+    $\varepsilon_{\mathrm{clip}}$ & categorical & $\{0.1, 0.2, 0.3, 0.4\}$ \\
+    $c_e$ (entropy) & log-uniform & $[10^{-4},\, 0.1]$ \\
+    $\lambda_{\mathrm{GAE}}$ & uniform & $[0.8,\, 1.0]$ \\
+    $\gamma$ & categorical & $\{0.9, 0.95, 0.99, 0.995, 0.999\}$ \\
+    $n_{\mathrm{epochs}}$ & categorical & $\{3, 5, 10, 15, 20, 30\}$ \\
+    Batch size & categorical & $\{32, 64, 128, 256, 512\}$ \\
+    $n_{\mathrm{steps}}$ & categorical & $\{512, 1024, 2048, 4096\}$ \\
+    Hidden sizes & categorical & $\{(32,32), (64,64), (128,128), (256,256)\}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Methods.}
+\textbf{OFAT} varies one hyperparameter over a grid while holding others at the paper default~\citep{schulman2017proximal}, averaged over 3 seeds. This isolates individual sensitivities but ignores interactions.
+\textbf{Random search} draws $N$ independent configurations from the joint space---a strong baseline that explores the full space without modelling~\citep{bergstra2012random}.
+\textbf{Optuna TPE} (Tree-structured Parzen Estimator) models the objective as a function of hyperparameters and proposes trials expected to improve over past observations~\citep{bergstra2011algorithms}. Algorithm~\ref{alg:hpo} summarises the search loop; the key difference is how $\mathbf{h}$ is sampled (uniformly vs.\ from the TPE surrogate).
+
+\begin{algorithm}[H]
+\caption{Hyperparameter search (Random / Optuna)}
+\label{alg:hpo}
+\begin{algorithmic}[1]
+\Require Search space $\mathcal{H}$, number of trials $N$, training budget $T$, eval episodes $E$
+\State $\mathcal{R} \gets \emptyset$ \Comment{Results}
+\For{$i = 1, \ldots, N$}
+    \State $\mathbf{h} \gets \textsc{Sample}(\mathcal{H}, \mathcal{R})$ \Comment{Random: uniform; TPE: surrogate model}
+    \State $\pi \gets \textsc{TrainPPO}(\mathbf{h}, T)$ \Comment{Train for $T$ env steps}
+    \State $s \gets \frac{1}{E}\sum_{j=1}^{E} G_j(\pi)$ \Comment{Mean return over $E$ deterministic episodes}
+    \State $\mathcal{R} \gets \mathcal{R} \cup \{(\mathbf{h}, s)\}$
+\EndFor
+\State \Return $\arg\max_{(\mathbf{h},s)\in\mathcal{R}} s$
+\end{algorithmic}
+\end{algorithm}
 
 
 \section{Results}
@@ -406,6 +512,60 @@ Second, the standard discount $\gamma = 0.99$ effectively hides the $+100$ termi
 \paragraph{Two hyperparameter changes are sufficient.}
 Both issues can be addressed without modifying the algorithm. We hold each warmup action for ten consecutive environment steps (\texttt{warmup\_action\_repeat}$=10$), which lets random actions accumulate enough momentum to actually escape the valley; this raises the per-episode goal-reach rate during warmup from $0\%$ to roughly $70\%$, so the buffer is seeded with informative transitions. We then raise the discount to $\gamma = 0.9999$, restoring the discounted goal value to $\approx 95$ and ensuring that the terminal bonus dominates the integrated action penalty.
 
+
+
+
+
+
+\subsection{Proximal policy optimization (PPO)}
+
+\paragraph{One-factor-at-a-time (OFAT):}
+OFAT sweeps reveal that PPO's sensitivity is environment-dependent.
+On \textbf{CartPole-v1} (Figure~\ref{fig:cartpole_ppo_hyperparameters}, Appendix), learning rate has minimal impact once above $10^{-4}$, and all tested $\varepsilon_{\mathrm{clip}}$ values converge to near-optimal return; the task is simple enough that most reasonable settings succeed.
+On \textbf{Acrobot-v1}, moderate learning rates ($3{\times}10^{-4}$) outperform both lower and higher values, and non-zero entropy ($c_e \approx 0.01$) accelerates early exploration without harming final performance.
+\textbf{MountainCar-v0} is the most sensitive: only $c_e \geq 0.01$ escapes the local minimum at $-200$; $\lambda_{\mathrm{GAE}} = 1.0$ (Monte Carlo returns) outperforms lower values; and $\gamma \geq 0.99$ is required for adequate credit assignment over the long horizon.
+On \textbf{Pendulum-v1}, higher learning rates ($\geq 10^{-3}$) learn faster, and $\lambda_{\mathrm{GAE}} \in [0.9, 0.95]$ balances bias and variance effectively.
+
+\paragraph{Joint search: random vs.\ Optuna:}
+Table~\ref{tab:ppo-joint-search} summarises joint-search results on Pendulum-v1 and MountainCar-v0 (10 trials each, seed 0, $10^5$ steps).
+On \textbf{Pendulum}, random search found a configuration scoring $-144.6$, substantially better than Optuna's best ($-954.8$). This counter-intuitive result arises because (i) the trial budget is small relative to the 9-dimensional space, limiting TPE's ability to build an accurate surrogate, and (ii) random search uniformly covers the space, occasionally sampling high-quality regions that TPE's early model underweights.
+On \textbf{MountainCar}, only 1 of 10 random trials escaped the $-200$ failure mode, achieving $-140.4$; the remaining 9 trials failed to reach the goal within the training budget. This highlights MountainCar's sparse-reward challenge: without sufficient entropy or the right $\gamma$, PPO converges to a degenerate policy.
+
+\begin{table}[htbp]
+  \centering
+  \caption{PPO joint-search results (10 trials, seed 0). Eval return = mean over 10 deterministic episodes after training. Higher is better. MountainCarContinuous results pending.}
+  \label{tab:ppo-joint-search}
+  \small
+  \begin{tabular}{lcccc}
+    \toprule
+    Environment & Method & Best Eval & Median & Success Rate \\
+    \midrule
+    \multirow{2}{*}{Pendulum-v1} 
+      & Random & $\mathbf{-144.6}$ & $-1092.6$ & -- \\
+      & Optuna TPE & $-954.8$ & $-1284.5$ & -- \\
+    \midrule
+    MountainCar-v0 & Random & $-140.4$ & $-200.0$ & 10\% \\
+    & Optuna TPE & ... & ... & ... \\
+    \midrule
+    MountainCarCont. & Random & \multicolumn{3}{c}{\emph{(pending)}} \\
+                     & Optuna TPE & \multicolumn{3}{c}{\emph{(pending)}} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Optuna importance analysis:}
+Figure~\ref{fig:importances} shows fANOVA-based hyperparameter importances from the Optuna study on Pendulum-v1. Network capacity (\texttt{hidden\_sizes}), training intensity ($n_{\mathrm{epochs}}$, batch size), and temporal parameters ($\gamma$, $\mathrm{lr}$, $\lambda_{\mathrm{GAE}}$) each contribute 13--19\% of outcome variance. In contrast, $\varepsilon_{\mathrm{clip}}$ and $c_e$ contribute only 2\% each, consistent with PPO's design goal of robustness to the clipping threshold once it lies in a sensible range.
+
+\paragraph{Learning dynamics:}
+Figure~\ref{fig:best-random-vs-optuna} compares training episode returns for the best random and Optuna trials on Pendulum. The random-search winner (trial 5) shows steady improvement throughout training, while Optuna's best (trial 9) plateaus earlier at a worse level. Figures~\ref{fig:random-eval} and~\ref{fig:optuna-top3} (Appendix) plot the \emph{evaluation} metric used for scoring: 10 deterministic episodes at each checkpoint. The final dashed line ($-144.6$ vs.\ $-954.8$) is the trial score reported in Table~\ref{tab:ppo-joint-search}.
+
+\paragraph{Best configurations:}
+Table~\ref{tab:pendulum-best-hparams} lists the winning hyperparameters for Pendulum. Both methods selected $\varepsilon_{\mathrm{clip}}=0.1$, $n_{\mathrm{epochs}}=5$, $n_{\mathrm{steps}}=4096$, and $(128,128)$ hidden layers. The key difference is $\gamma$: random's best uses $\gamma=0.9$, while Optuna chose $\gamma=0.995$. Pendulum's 200-step episodes with dense rewards benefit from lower discount factors that reduce variance in the value bootstrap---a finding consistent with our SAC analysis on the same environment.
+
+\paragraph{Limitations:}
+Our HPO experiments use a single training seed and 10 evaluation episodes per trial, introducing non-negligible variance in trial rankings. Large performance gaps (e.g., $-144$ vs.\ $-955$) are unlikely to reverse, but close trials may swap order under resampling. Future work should increase seed count and trial budget for more robust conclusions.
+
+
 \section{Conclusion}
 
 \bibliographystyle{plainnat}
@@ -420,6 +580,189 @@ Both issues can be addressed without modifying the algorithm. We hold each warmu
 Technical appendices with additional results, figures, graphs, and proofs may be submitted with the paper submission before the full submission deadline (see above). You can upload a ZIP file for videos or code, but do not upload a separate PDF file for the appendix. There is no page limit for the technical appendices. 
 
 Note: Think of the appendix as ``optional reading'' for reviewers. The paper must be able to stand alone without the appendix; for example, adding critical experiments that support the main claims to an appendix is inappropriate. 
+
+\subsection{PPO Hyperparameter Experiments}
+\subsubsection{One factor at a time}
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{Figure/PPO/CartPole-v1_1.png}
+        \caption{Learning rate}
+        \label{fig:cartpole_lr}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{Figure/PPO/CartPole-v1_2.png}
+        \caption{Clipping parameter ($\epsilon$)}
+        \label{fig:cartpole_clip_eps}
+    \end{subfigure}
+
+    \caption{Effects of learning rate and clipping parameter on PPO performance in CartPole-v1. Results are averaged over three random seeds and smoothed using a moving average window of 10 episodes. Higher learning rates generally accelerate initial learning but may introduce greater variance, while different clipping values affect the trade-off between update stability and learning speed.}
+    \label{fig:cartpole_ppo_hyperparameters}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{Figure/PPO/Acrobot-v1_1.png}
+        \caption{Learning rate}
+        \label{fig:acrobot_lr}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{Figure/PPO/Acrobot-v1_2.png}
+        \caption{Entropy coefficient}
+        \label{fig:acrobot_ent_coef}
+    \end{subfigure}
+
+    \caption{Effects of learning rate and entropy coefficient on PPO performance in Acrobot-v1. Results are averaged over three random seeds and smoothed using a moving average window of 10 episodes. Different learning rates affect convergence speed and stability, while varying entropy coefficients influence the trade-off between exploration and exploitation during training.}
+    \label{fig:acrobot_ppo_hyperparameters}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{Figure/PPO/Pendulum-v1_1.png}
+        \caption{Learning rate}
+        \label{fig:pendulum_lr}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{Figure/PPO/Pendulum-v1_2.png}
+        \caption{Entropy coefficient}
+        \label{fig:pendulum_gae_lambda}
+    \end{subfigure}
+
+    \caption{Effects of learning rate and GAE parameter ($\lambda$) on PPO performance in Pendulum-v1. Results are averaged over three random seeds and smoothed using a moving average window of 10 episodes. The learning rate controls the magnitude of policy updates, while the GAE parameter ($\lambda$) affects the bias–variance trade-off in advantage estimation.}
+    \label{fig:pendulum_ppo_hyperparameters}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{Figure/PPO/MountainCar-v0_1.png}
+        \caption{Entropy coefficient}
+        \label{fig:mountaincar_ent_coef}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{Figure/PPO/MountainCar-v0_2.png}
+        \caption{GAE parameter ($\lambda$)}
+        \label{fig:mountaincar_gae_lambda}
+    \end{subfigure}
+
+    \vspace{0.5em}
+
+    \begin{subfigure}[b]{0.6\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{Figure/PPO/MountainCar-v0_3.png}
+        \caption{Discount factor ($\gamma$)}
+        \label{fig:mountaincar_gamma}
+    \end{subfigure}
+
+    \caption{Effects of entropy coefficient, GAE parameter ($\lambda$), and discount factor ($\gamma$) on PPO performance in MountainCar-v0. Results are averaged over three random seeds and smoothed using a moving average window of 10 episodes. The entropy coefficient controls exploration, the GAE parameter ($\lambda$) adjusts the bias–variance trade-off in advantage estimation, and the discount factor ($\gamma$) determines the weighting of future rewards.}
+    \label{fig:mountaincar_ppo_hyperparameters}
+\end{figure}
+\subsubsection{Random Search}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\linewidth]{Figure/PPO/Pendulum-v1_5.png}
+  \caption{Top-3 trials by final eval score.}
+  \label{fig:hpo-curves_random_search}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{Figure/PPO/Pendulum-v1_7.png}
+  \caption{Best random-search trial on \texttt{Pendulum-v1} (trial~5, seed~0).
+    Evaluation return vs.\ training steps: at each checkpoint, the policy is
+    frozen and tested for 10 deterministic episodes; points show the mean return.
+    The dashed line is the final trial score ($-144.6$) used for HPO ranking.}
+  \label{fig:random-eval}
+\end{figure}
+
+% \begin{figure}[H]
+%   \centering
+%   \begin{subfigure}[b]{0.49\linewidth}
+%     \includegraphics[width=\linewidth]{Figure/PPO/Pendulum-v1_5.png}
+%     \caption{Random search.}
+%   \end{subfigure}
+%   \hfill
+%   \begin{subfigure}[b]{0.49\linewidth}
+%     \includegraphics[width=\linewidth]{Figure/PPO/Pendulum-v1_6.png}
+%     \caption{Optuna TPE.}
+%   \end{subfigure}
+%   \caption{Top-3 trials by final eval score.}
+%   \label{fig:hpo-curves}
+% \end{figure}
+
+\subsubsection{Bayesian Search}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.65\linewidth]{Figure/PPO/Pendulum-v1_3.png}
+  \caption{Optuna fANOVA hyperparameter importances on Pendulum-v1.}
+  \label{fig:importances}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\linewidth]{Figure/PPO/Pendulum-v1_4.png}
+  \caption{Learning curves for the best joint-search trial under random search
+    and Optuna TPE on \texttt{Pendulum-v1} (seed~0).
+    Faint lines: per-episode returns; bold lines: smoothed mean
+    (window~10). Final selection uses mean eval return over the training run.}
+  \label{fig:best-random-vs-optuna}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Best search configuration per method on \texttt{Pendulum-v1}
+    (10 trials, seed~0, $10^5$ env steps). Higher eval return is better.}
+  \label{tab:pendulum-best-hparams}
+  \begin{tabular}{lrr}
+    \toprule
+    Hyperparameter & Random (trial 5) & Optuna TPE (trial 9) \\
+    \midrule
+    Eval return      & $-144.6$  & $-954.8$ \\
+    $ \mathrm{lr} $  & $2.09\times 10^{-3}$ & $3.39\times 10^{-3}$ \\
+    $ \mathrm{clip\_eps} $ & 0.1 & 0.1 \\
+    $ \mathrm{ent\_coef} $ & $9.63\times 10^{-3}$ & $5.43\times 10^{-3}$ \\
+    $ \mathrm{gae\_lambda} $ & 0.955 & 0.807 \\
+    $ \gamma $       & 0.9   & 0.995 \\
+    $ n_{\mathrm{epochs}} $ & 5 & 5 \\
+    Batch size       & 32    & 64 \\
+    $ n_{\mathrm{steps}} $   & 4096  & 4096 \\
+    Hidden sizes     & $(128,128)$ & $(128,128)$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\linewidth]{Figure/PPO/Pendulum-v1_6.png}
+  \caption{Top-3 trials by final eval score.}
+  \label{fig:hpo-curves_tpe}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{Figure/PPO/Pendulum-v1_8.png}
+  \caption{Best Optuna TPE trial on \texttt{Pendulum-v1} (trial~9, seed~0).
+    Same evaluation protocol as Figure~\ref{fig:random-eval}.
+    Final trial score: $-954.8$.}
+  \label{fig:optuna-top3}
+\end{figure}
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
