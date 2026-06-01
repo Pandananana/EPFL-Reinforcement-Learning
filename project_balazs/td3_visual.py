@@ -9,9 +9,7 @@ from torch import nn
 import torch.nn.functional as F
 from tqdm import tqdm
 
-# ==========================================
-# VISUALIZATION SCRIPT
-# ==========================================
+# Visualization for the trained TD3 agent
 
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action):
@@ -33,7 +31,6 @@ class Actor(nn.Module):
         return action
 
 def evaluate_action(state, actor, device):
-    """Selects an action deterministically (NO NOISE) for evaluation."""
     with torch.no_grad():
         state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(device)
         action = actor(state_tensor).cpu().data.numpy().flatten()
@@ -42,34 +39,30 @@ def evaluate_action(state, actor, device):
 def watch_agent(env_name, device, episodes=5):
     print(f"\nLoading trained agent for: {env_name}")
     
-    # Notice the render_mode="human" parameter!
     env = gym.make(env_name, render_mode="human")
     
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     max_action = float(env.action_space.high[0])
     
-    # Recreate the Actor brain
     actor = Actor(state_dim, action_dim, max_action).to(device)
     
-    # Load the trained weights from your hard drive
+    # Load the trained weights
     weights_path = f"td3_{env_name.lower().replace('-', '_')}_actor.pth"
     try:
         actor.load_state_dict(torch.load(weights_path, map_location=device))
-        actor.eval() # Tell PyTorch we are evaluating, not training
+        actor.eval() # Set torch to eval
         print(f"Successfully loaded {weights_path}")
     except FileNotFoundError:
         print(f"Could not find {weights_path}! Did you run the training loop?")
         return
 
-    # Watch the agent play!
     for episode in range(episodes):
         state, _ = env.reset()
         done = False
         total_reward = 0
         
         while not done:
-            # Ask the actor what to do
             action = evaluate_action(state, actor, device)
             
             # Take the step in the environment
@@ -77,18 +70,15 @@ def watch_agent(env_name, device, episodes=5):
             done = terminated or truncated
             total_reward += reward
             
-            # Optional: Slow down the rendering slightly so it's easier to watch
+            # Slow down the rendering slightly so it's easier to watch
             time.sleep(0.02)
             
         print(f"Evaluation Episode {episode+1}/{episodes} - Score: {total_reward:.1f}")
         
     env.close()
 
-# Run the visualizer!
+# Run the visualizer
 device = "mps" if torch.backends.mps.is_available() else "cpu"
 
-# Watch Pendulum (Should balance perfectly at the top!)
 watch_agent('Pendulum-v1', device)
-
-# Watch MountainCar (Will likely sit perfectly still at the bottom to avoid penalty!)
 watch_agent('MountainCarContinuous-v0', device)
