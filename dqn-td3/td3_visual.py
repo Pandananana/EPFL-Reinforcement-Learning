@@ -1,3 +1,4 @@
+import os
 import time
 import torch
 from torch import nn
@@ -48,7 +49,7 @@ def watch_agent(env_name, device, episodes=5):
     actor = Actor(state_dim, action_dim, max_action).to(device)
     
     # Load the trained weights
-    weights_path = f"td3_{env_name.lower().replace('-', '_')}_actor.pth"
+    weights_path = os.path.join("models", f"td3_{env_name.lower().replace('-', '_')}_actor.pth")
     try:
         actor.load_state_dict(torch.load(weights_path, map_location=device))
         actor.eval() # Set torch to eval

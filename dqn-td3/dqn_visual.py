@@ -1,3 +1,4 @@
+import os
 import time
 import torch
 import numpy as np
@@ -55,7 +56,7 @@ def watch_dqn_agent(env_name, device, episodes=5):
     model = DQN(input_features, number_of_actions).to(device)
     
     # Load the trained weights
-    weights_path = f"dqn_{env_name.lower().replace('-', '_')}_weights.pth"
+    weights_path = os.path.join("models", f"dqn_{env_name.lower().replace('-', '_')}_weights.pth")
     try:
         model.load_state_dict(torch.load(weights_path, map_location=device))
         model.eval() # Set torch to eval

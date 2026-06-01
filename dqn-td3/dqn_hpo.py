@@ -5,8 +5,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import random
 from collections import deque
-import optuna 
+import optuna
 import json
+import os
 
 import torch
 from torch import optim
@@ -191,7 +192,8 @@ if __name__ == "__main__":
 
     final_score, final_curve, best_model = train_agent(TARGET_ENV, study.best_params, num_episodes=1000, device=device)
     
-    weights_filename = f"best_dqn_{TARGET_ENV.lower().replace('-', '_')}.pth"
+    os.makedirs("models", exist_ok=True)
+    weights_filename = os.path.join("models", f"best_dqn_{TARGET_ENV.lower().replace('-', '_')}.pth")
     torch.save(best_model.state_dict(), weights_filename)
     print(f"Saved best agent weights to {weights_filename}")
     
@@ -225,7 +227,8 @@ if __name__ == "__main__":
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     
-    filename = f"dqn_hpo_{TARGET_ENV.lower().replace('-', '_')}.png"
+    os.makedirs("plots", exist_ok=True)
+    filename = os.path.join("plots", f"dqn_hpo_{TARGET_ENV.lower().replace('-', '_')}.png")
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     print(f"Saved comparative plot to {filename}")
     plt.show()

@@ -1,4 +1,5 @@
 # TD3 implementation based on the 2018 Fujimoto et al paper, may the gods of AC help us
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -12,6 +13,11 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 import gymnasium as gym
+
+# Output directories (relative to where the script is run, i.e. dqn-td3/)
+MODELS_DIR = "models"
+PLOTS_DIR = "plots"
+RESULTS_DIR = "results"
 
 # Experience replay buffer class
 class ExperienceReplayBuffer:
@@ -265,8 +271,9 @@ for env_name in environments:
             print(f"Episode {episode+1}/{num_episodes} - Avg Score (last 10): {avg_score:.1f}")
 
     # Save the trained model weights dynamically
-    torch.save(actor.state_dict(), f"td3_{env_name.lower().replace('-', '_')}_actor.pth")
-    torch.save(critic.state_dict(), f"td3_{env_name.lower().replace('-', '_')}_critic.pth")
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    torch.save(actor.state_dict(), os.path.join(MODELS_DIR, f"td3_{env_name.lower().replace('-', '_')}_actor.pth"))
+    torch.save(critic.state_dict(), os.path.join(MODELS_DIR, f"td3_{env_name.lower().replace('-', '_')}_critic.pth"))
     print(f"Saved agent for {env_name}")
     
     benchmark_results[env_name] = episode_rewards
@@ -274,7 +281,8 @@ for env_name in environments:
 # Save training data for later inspection
 results_df = pd.DataFrame(benchmark_results)
 
-csv_filename = "td3_benchmark_results.csv"
+os.makedirs(RESULTS_DIR, exist_ok=True)
+csv_filename = os.path.join(RESULTS_DIR, "td3_benchmark_results.csv")
 results_df.to_csv(csv_filename, index_label="Episode")
 print(f"Saved raw training data to {csv_filename}")
 
@@ -297,6 +305,8 @@ for i, (env_name, rewards) in enumerate(benchmark_results.items()):
 
 plt.tight_layout()
 
-plt.savefig("td3_benchmark_results.png", dpi=300, bbox_inches='tight')
-print("Saved benchmark plot to td3_benchmark_results.png")
+os.makedirs(PLOTS_DIR, exist_ok=True)
+plot_path = os.path.join(PLOTS_DIR, "td3_benchmark_results.png")
+plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+print(f"Saved benchmark plot to {plot_path}")
 plt.show()

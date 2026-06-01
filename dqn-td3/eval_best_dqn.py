@@ -200,7 +200,8 @@ if __name__ == "__main__":
     plt.tight_layout()
     
     # Save and show
-    plot_filename = f"comparative_eval_{TARGET_ENV.lower().replace('-', '_')}.png"
+    os.makedirs("plots", exist_ok=True)
+    plot_filename = os.path.join("plots", f"comparative_eval_{TARGET_ENV.lower().replace('-', '_')}.png")
     plt.savefig(plot_filename, dpi=300, bbox_inches='tight')
     print(f"Saved comparative evaluation plot to {plot_filename}")
     

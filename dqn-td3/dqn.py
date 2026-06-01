@@ -1,5 +1,6 @@
 # DQN implementation based on the DeepMind paper
 
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -18,6 +19,11 @@ import gymnasium as gym
 
 # For visualization
 from gym.wrappers.monitoring import video_recorder
+
+# Output directories (relative to where the script is run, i.e. dqn-td3/)
+MODELS_DIR = "models"
+PLOTS_DIR = "plots"
+RESULTS_DIR = "results"
 
 # Experience replay buffer class
 class ExperienceReplayBuffer:
@@ -199,7 +205,8 @@ for env_name in environments:
         print(f"Episode {episode+1}/{num_episodes} - Score: {total_reward} - Epsilon: {epsilon:.2f}")
 
     # Save the trained model dynamically based on the environment
-    filename = f"dqn_{env_name.lower().replace('-', '_')}_weights.pth"
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    filename = os.path.join(MODELS_DIR, f"dqn_{env_name.lower().replace('-', '_')}_weights.pth")
     torch.save(model.state_dict(), filename)
     print(f"Saved agent to {filename}")
     
@@ -210,7 +217,8 @@ for env_name in environments:
 # Save training data for later inspection
 results_df = pd.DataFrame(benchmark_results)
 
-csv_filename = "dqn_benchmark_results.csv"
+os.makedirs(RESULTS_DIR, exist_ok=True)
+csv_filename = os.path.join(RESULTS_DIR, "dqn_benchmark_results.csv")
 results_df.to_csv(csv_filename, index_label="Episode")
 print(f"Saved raw training data to {csv_filename}")
 
@@ -237,7 +245,9 @@ for i, (env_name, rewards) in enumerate(benchmark_results.items()):
 # Add h_pad to explicitly enforce vertical spacing between the graphs
 plt.tight_layout(h_pad=4.0) 
 
-plt.savefig("dqn_benchmark_results.png", dpi=300, bbox_inches='tight')
-print("Saved benchmark plot to dqn_benchmark_results.png")
+os.makedirs(PLOTS_DIR, exist_ok=True)
+plot_path = os.path.join(PLOTS_DIR, "dqn_benchmark_results.png")
+plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+print(f"Saved benchmark plot to {plot_path}")
 
 plt.show()

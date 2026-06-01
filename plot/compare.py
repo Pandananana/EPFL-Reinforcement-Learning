@@ -5,8 +5,8 @@ that environment overlaid on the same axes, so the learning curves can be
 compared directly.
 
 Data sources (benchmark / vanilla results only):
-  - DQN : dqn/dqn_benchmark_results.csv         wide, single run (no seeds)
-  - TD3 : td3/td3_benchmark_results.csv          wide, single run (no seeds)
+  - DQN : dqn-td3/results/dqn_benchmark_results_vanilla.csv   wide, single run (no seeds)
+  - TD3 : dqn-td3/results/td3_benchmark_results_vanilla.csv   wide, single run (no seeds)
   - PPO : ppo/ppo_vanilla_<Env>_episodes.csv     long, 3 seeds (unequal length)
   - SAC : sac/results/<Env>_vanilla_seed*.csv     3 seeds (episode_return)
 
@@ -36,8 +36,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUTDIR = os.path.join(HERE, "figs")
 
-DQN_CSV = os.path.join(ROOT, "dqn", "dqn_benchmark_results.csv")
-TD3_CSV = os.path.join(ROOT, "td3", "td3_benchmark_results.csv")
+DQN_CSV = os.path.join(ROOT, "dqn-td3", "results", "dqn_benchmark_results_vanilla.csv")
+TD3_CSV = os.path.join(ROOT, "dqn-td3", "results", "td3_benchmark_results_vanilla.csv")
 
 # The five environments and a friendly title for each.
 ENVS = [
