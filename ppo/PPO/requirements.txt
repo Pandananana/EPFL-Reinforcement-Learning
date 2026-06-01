@@ -1,0 +1,6 @@
+gymnasium[classic-control]>=0.29
+torch>=2.0
+matplotlib>=3.7
+numpy>=1.24
+optuna>=3.5
+pandas>=2.0
