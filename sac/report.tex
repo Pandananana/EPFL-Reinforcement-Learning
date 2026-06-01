@@ -112,26 +112,26 @@ All five environments used in this report belong to the \emph{Classic Control} s
     \renewcommand{\arraystretch}{1.2}%
     \begin{tabular}{|c|c|}
         \hline
-        \begin{subfigure}{0.45\linewidth}
+        \begin{subfigure}{0.3\linewidth}
             \centering
             \includegraphics[width=\linewidth]{cartpole.png}
             \caption{CartPole}
             \label{fig:cartpole}
         \end{subfigure} &
-        \begin{subfigure}{0.45\linewidth}
+        \begin{subfigure}{0.3\linewidth}
             \centering
             \includegraphics[width=\linewidth]{mountaincar.png}
             \caption{MountainCar}
             \label{fig:mountaincar}
         \end{subfigure} \\
         \hline
-        \begin{subfigure}{0.45\linewidth}
+        \begin{subfigure}{0.3\linewidth}
             \centering
             \includegraphics[width=\linewidth]{pendulum.png}
             \caption{Pendulum}
             \label{fig:pendulum}
         \end{subfigure} &
-        \begin{subfigure}{0.45\linewidth}
+        \begin{subfigure}{0.3\linewidth}
             \centering
             \includegraphics[width=\linewidth]{acrobot.png}
             \caption{Acrobot}
@@ -150,7 +150,7 @@ CartPole-v1 \citep{barto1983neuronlike} requires keeping a pole upright on a car
 MountainCar-v0 \citep{moore1990efficient} places a car in a valley that must reach a flag on the right hill, but its engine is too weak to climb directly; the agent must build momentum by rocking between the hills. The state is 2-dimensional (position, velocity) and the action is discrete (accelerate left, none, right), with a reward of $-1$ per step and a 200-step truncation. Its defining property is an effectively sparse reward: a random policy almost never reaches the goal within 200 steps, so MountainCar is a stress test for exploration.
 
 \subsection{MountainCarContinuous-v0}
-MountainCarContinuous-v0 shares the physical setup of MountainCar-v0 but replaces the discrete action with a continuous force in $[-1, 1]$. Its reward also differs: a per-step penalty of $-0.1\,a_t^2$ discourages large actions, while a one-off $+100$ bonus is granted on reaching the goal, over a 999-step horizon. This combines the exploration challenge of its discrete counterpart with a credit-assignment problem---aggressive actions are locally penalized yet necessary to escape the valley---and is the only environment here where exploration happens in a continuous action space.
+MountainCarContinuous-v0 shares the physical setup of MountainCar-v0 but replaces the discrete action with a continuous force in $[-1, 1]$. Its reward also differs: a per-step penalty of $-0.1\,a_t^2$ discourages large actions, while a one-off $+100$ bonus is granted on reaching the goal, over a 999-step horizon.
 
 \subsection{Pendulum-v1}
 Pendulum-v1 is the classical swing-up problem: starting from a random orientation, the agent applies a continuous torque in $[-2, 2]$ N·m to bring the pendulum upright and hold it there. The 3-dimensional state encodes the angle as $(\cos\theta, \sin\theta)$ together with the angular velocity, and the per-step reward quadratically penalizes deviation from upright, angular speed, and torque, over a 200-step horizon with no termination. The reward is dense everywhere; the challenge is the underactuated dynamics, as the maximum torque cannot lift the pendulum directly and the agent must pump energy through repeated swings before stabilizing.
@@ -268,28 +268,13 @@ The full update (Algorithm~\ref{alg:sac}) alternates one environment step under 
 \end{algorithmic}
 \end{algorithm}
 
-\subsubsection{Hyperparameter Sensitivity}
+\subsection{Proximal Policy Optimization (PPO)}
 
-We ran 143-trial Optuna sweeps of SAC on the two continuous-control environments in our benchmark. The swept set is identical across environments except that MountainCarContinuous-v0 also varies \texttt{warmup\_action\_repeat}, the knob from Section~\ref{sec:sac} used to seed the replay buffer with successful trajectories. Trials use the same training budget and three evaluation seeds as our final runs, and we report the mean undiscounted episodic return of the final policy.
-
-\paragraph{MountainCarContinuous-v0.}
-On this sparse-reward task only about 21 percent of trials cross our ``solved'' threshold of return $\geq 80$; the rest are stuck near zero. Three knobs separate the two regimes. First, \texttt{warmup\_action\_repeat} must sit in a narrow band: a value of 1 solves 0 of 29 trials, values of 5 or 10 solve roughly 28 percent each, and a value of 20 over-commits to a single direction and drops the success rate back to 10 percent. Second, the discount factor must lie in $\{0.999, 0.9999\}$, which solve 32 and 27 percent of trials respectively; the other settings we tested (0.99, 0.995, 0.9995, 0.99995) all collapse to a 0 percent solve rate. Third, a batch size of 128 beats 256 and 512 by a wide margin (28 percent versus 0 and 11), plausibly because smaller minibatches expose the buffer's rare goal-reaching transitions more often per gradient step. Outside of those three knobs SAC is essentially insensitive to the temperature $\alpha$, the learning rate, and the Polyak rate $\tau$ across the ranges swept. Once the buffer contains successful trajectories the 2-dimensional state space is easy enough that fine-grained optimizer choices stop mattering.
-
-\paragraph{Pendulum-v1.}
-With dense rewards the picture flips. About 48 percent of trials reach a loose ``good'' threshold of return $\geq -200$, and the sensitivity is concentrated on the optimization side rather than on exploration. Learning rate is the dominant knob: the lowest swept quartile (below roughly $3 \times 10^{-4}$) never crosses the threshold, while the upper three quartiles solve between 56 and 72 percent of trials. Counter-intuitively, lower discount factors work better here: the bottom quartile of the swept range (0.95 to 0.968) solves 66 percent of trials, the top quartile (0.983 to 0.999) only 31 percent. Pendulum episodes are 200 truncated steps with no real long-horizon credit, so larger $\gamma$ mostly inflates variance in the bootstrap target. The Polyak rate peaks in a narrow band of $\tau \in [0.004, 0.007]$ and degrades at either end; batch size 128 again beats 256 and 512; and a hidden dim of 128 beats both 64 (too small) and 256 (overparameterised for this short-horizon task). The entropy temperature $\alpha$ barely moves the result over two orders of magnitude, consistent with the SAC paper's claim that the method is robust to $\alpha$ once it is in a sensible range.
-
-\paragraph{Takeaway.}
-The hyperparameters that drive SAC's performance are environment dependent rather than universal. Exploration-side knobs (\texttt{warmup\_action\_repeat} and a careful $\gamma$) dominate on sparse-reward MountainCarContinuous, while optimization-side knobs ($\eta$, $\gamma$, $\tau$) dominate on dense-reward Pendulum. The entropy temperature $\alpha$ has only a small effect on either environment, which lines up with $\alpha$ being precisely the parameter SAC's automatic-temperature variant is designed to remove from the tuning loop.
-
-\subsection{Proximal policy optimization (PPO)}
 \subsubsection{Baseline Algorithm}
-Proximal Policy Optimization \citep{schulman2017proximal} is an on-policy actor-critic algorithm for continuous and discrete action spaces. It addresses a core difficulty in policy gradient methods: taking too large an update step can collapse performance, yet constraining updates via explicit KL penalties (as in TRPO \citep{....}) is computationally expensive. PPO-Clip resolves this with a simple clipped surrogate objective that implicitly enforces a trust region, making it both stable and easy to implement.
 
-\paragraph{Maximum-entropy objective and policy ratio:} Let $\pi_{\theta_k}$ denote the behaviour policy that collected rollout $\mathcal{D}_k$. PPO measures how much the updated policy $\pi_\theta$ deviates from $\pi_{\theta_k}$ via the probability ratio
-\begin{equation}
-    r_t(\theta) \;=\; \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_k}(a_t \mid s_t)},
-\end{equation}
-which equals one when $\theta = \theta_k$ and drifts away as the policy changes. The clipped surrogate objective is
+Proximal Policy Optimization \citep{schulman2017proximal} is an on-policy actor-critic algorithm that addresses a core difficulty in policy gradients: large update steps can collapse performance, yet explicit KL constraints (as in TRPO) are computationally expensive. PPO-Clip resolves this with a simple clipped surrogate objective that implicitly enforces a trust region.
+
+Let $\pi_{\theta_k}$ denote the behaviour policy that collected rollout $\mathcal{D}_k$. PPO measures deviation from this policy via the probability ratio $r_t(\theta) = \pi_\theta(a_t \mid s_t) / \pi_{\theta_k}(a_t \mid s_t)$, which equals one when $\theta = \theta_k$. The clipped surrogate objective is
 \begin{equation}
     L^{\mathrm{CLIP}}(\theta)
     \;=\; \mathbb{E}_{t \sim \mathcal{D}_k}
@@ -301,16 +286,16 @@ which equals one when $\theta = \theta_k$ and drifts away as the policy changes.
     \right],
     \label{eq:ppo-clip}
 \end{equation}
-where $\varepsilon$ (typically $0.2$) controls how far the ratio is allowed to move. The $\min$ makes the objective a lower bound: when $\hat{A}_t > 0$, the update is prevented from becoming too optimistic by capping $r_t$ at $1+\varepsilon$; when $\hat{A}_t < 0$, the ratio is floored at $1-\varepsilon$. This achieves a trust-region effect without solving a constrained optimisation problem.
+where $\varepsilon$ (typically $0.2$) bounds how far the ratio can move. The $\min$ creates a lower bound: when $\hat{A}_t > 0$, the update is capped at $r_t = 1+\varepsilon$; when $\hat{A}_t < 0$, it is floored at $1-\varepsilon$.
 
-\paragraph{Generalized Advantage Estimation:} Advantages $\hat{A}_t$ are estimated via GAE-$\lambda$ \citep{...}, which balances bias and variance through a weighted sum of TD residuals. For $\delta_t = r_t + \gamma V(s_{t+1})(1-d_t) - V(s_t)$, where $d_t$ is a terminal flag,
+Advantages $\hat{A}_t$ are estimated via GAE-$\lambda$ \citep{schulman2016gae}, which balances bias and variance through a weighted sum of TD residuals $\delta_t = r_t + \gamma V(s_{t+1})(1-d_t) - V(s_t)$:
 \begin{equation}
-    \hat{A}_t \;=\; \sum_{l=0}^{T-t-1} (\gamma\lambda)^l\,\delta_{t+l},
+    \hat{A}_t \;=\; \sum_{l=0}^{T-t-1} (\gamma\lambda)^l\,\delta_{t+l}.
     \label{eq:gae}
 \end{equation}
-computed backward over the rollout of horizon $T$. The corresponding return target for the value function is $\hat{R}_t = \hat{A}_t + V_{\theta_k}(s_t)$. Setting $\lambda = 1$ recovers the full Monte Carlo return (high variance, low bias), while $\lambda = 0$ reduces to a one-step TD target (low variance, higher bias); intermediate values trade off these extremes.
+Setting $\lambda = 1$ recovers Monte Carlo returns (high variance, low bias); $\lambda = 0$ reduces to one-step TD (low variance, higher bias). The return target is $\hat{R}_t = \hat{A}_t + V_{\theta_k}(s_t)$.
 
-\paragraph{Combined loss:} The actor and critic share a single neural network (separate output heads), so all parameters are updated jointly. Each stochastic gradient step minimises
+The actor and critic share a neural network with separate output heads. Each gradient step minimises
 \begin{equation}
     \mathcal{L}(\theta)
     \;=\; -L^{\mathrm{CLIP}}(\theta)
@@ -318,7 +303,7 @@ computed backward over the rollout of horizon $T$. The corresponding return targ
     \;-\; c_e\,\mathbb{E}_t\!\left[\mathcal{H}\!\left(\pi_\theta(\cdot \mid s_t)\right)\right],
     \label{eq:ppo-loss}
 \end{equation}
-where $c_v$ and $c_e$ weight the value loss and an entropy bonus, respectively. The entropy term encourages exploration by penalising premature collapse of the action distribution.
+where $c_v$ and $c_e$ weight the value loss and entropy bonus. The entropy term encourages exploration by penalising premature collapse of the action distribution. Algorithm~\ref{alg:ppo} summarises the training loop.
 
 % \paragraph{Algorithm:} PPO alternates between collecting on-policy rollouts and performing multiple epochs of minibatch gradient descent on the same data (Algorithm~\ref{alg:ppo}). Unlike off-policy methods, the rollout buffer is discarded after each update cycle, so all data used for training was generated by the current policy. To keep the probability ratios $r_t(\theta)$ well-defined, the log-probabilities $\log\pi_{\theta_k}(a_t \mid s_t)$ are stored at collection time and held fixed during the $K$ update epochs. Advantages are normalised to zero mean and unit variance within each minibatch to stabilise training, and gradient norms are clipped to prevent excessively large update steps.
 
@@ -348,17 +333,16 @@ where $c_v$ and $c_e$ weight the value loss and an entropy bonus, respectively. 
 \subsubsection{Hyperparameter Optimization}
 \label{sec:ppo-hpo}
 
-We study PPO's sensitivity to hyperparameters using three complementary approaches: (i) one-factor-at-a-time (OFAT) sweeps to isolate individual effects, (ii) random search as a model-free baseline, and (iii) Optuna TPE~\citep{akiba2019optuna} as a Bayesian alternative. All methods use the same evaluation protocol: after training for a fixed budget, we freeze the policy and compute the mean undiscounted return over 10 deterministic episodes. This \emph{evaluation return} serves as the trial score for ranking configurations.
+We study PPO's sensitivity using three approaches: (i) one-factor-at-a-time (OFAT) sweeps to isolate individual effects, (ii) random search as a model-free baseline, and (iii) Optuna TPE~\citep{akiba2019optuna} as a Bayesian alternative. All methods use the same protocol: after training, we evaluate the frozen policy over 10 deterministic episodes.
 
-\paragraph{Search space.}
-Table~\ref{tab:ppo-search-space} defines the joint search space used for random and Optuna searches. We use a conservative space for easy environments (CartPole, Acrobot) and an extended space including $\gamma$, $n_{\mathrm{steps}}$, and network size for harder tasks (MountainCar, Pendulum).
+Table~\ref{tab:ppo-search-space} defines the search space. We use a conservative space for easy environments (CartPole, Acrobot) and an extended space including $\gamma$, $n_{\mathrm{steps}}$, and network size for harder tasks.
 
 \begin{table}[H]
   \centering
-  \caption{PPO joint search space for hard environments. Easy environments use a subset excluding $\gamma$, $n_{\mathrm{steps}}$, and hidden sizes.}
+  \caption{PPO search space. Easy environments exclude $\gamma$, $n_{\mathrm{steps}}$, and hidden sizes.}
   \label{tab:ppo-search-space}
   \small
-  \begin{tabular}{llll}
+  \begin{tabular}{lll}
     \toprule
     Parameter & Type & Range / Choices \\
     \midrule
@@ -375,10 +359,7 @@ Table~\ref{tab:ppo-search-space} defines the joint search space used for random 
   \end{tabular}
 \end{table}
 
-\paragraph{Methods.}
-\textbf{OFAT} varies one hyperparameter over a grid while holding others at the paper default~\citep{schulman2017proximal}, averaged over 3 seeds. This isolates individual sensitivities but ignores interactions.
-\textbf{Random search} draws $N$ independent configurations from the joint space---a strong baseline that explores the full space without modelling~\citep{bergstra2012random}.
-\textbf{Optuna TPE} (Tree-structured Parzen Estimator) models the objective as a function of hyperparameters and proposes trials expected to improve over past observations~\citep{bergstra2011algorithms}. Algorithm~\ref{alg:hpo} summarises the search loop; the key difference is how $\mathbf{h}$ is sampled (uniformly vs.\ from the TPE surrogate).
+OFAT varies one hyperparameter while holding others at the paper default~\citep{schulman2017proximal}, averaged over 3 seeds. Random search draws $N$ independent configurations from the joint space~\citep{bergstra2012random}. Optuna TPE models the objective and proposes trials expected to improve over past observations~\citep{bergstra2011algorithms}. Algorithm~\ref{alg:hpo} summarises the search loop.
 
 \begin{algorithm}[H]
 \caption{Hyperparameter search (Random / Optuna)}
@@ -396,7 +377,6 @@ Table~\ref{tab:ppo-search-space} defines the joint search space used for random 
 \end{algorithmic}
 \end{algorithm}
 
-
 \section{Results}
 
 \begin{table}[H]
@@ -408,11 +388,11 @@ Table~\ref{tab:ppo-search-space} defines the joint search space used for random 
     \toprule
     Environment & DQN & PPO & SAC & TD3 \\
     \midrule
-    CartPole-v1               & $481.3 \pm 12.7$         & $\mathbf{498.6 \pm 2.1}$  & ---                       & ---               \\
-    Acrobot-v1                & $-86.4 \pm 8.2$          & $\mathbf{-78.1 \pm 5.4}$  & ---                       & ---               \\
-    MountainCar-v0            & $\mathbf{-104.7 \pm 6.3}$ & $-128.5 \pm 18.9$        & ---                       & ---               \\
-    MountainCarContinuous-v0  & ---                      & $88.2 \pm 4.1$            & $\mathbf{95.53 \pm 1.24}$   & $93.1 \pm 1.8$    \\
-    Pendulum-v1               & ---                      & $-176.9 \pm 22.4$         & $\mathbf{-114.55 \pm 70.38}$ & $-148.7 \pm 11.3$ \\
+    CartPole-v1               & $481.3 \pm 12.7$         & $\mathbf{500.0 \pm 0.0}$  & ---                       & ---               \\
+    Acrobot-v1                & $-86.4 \pm 8.2$          & $\mathbf-85.9 \pm 6.1$  & ---                       & ---               \\
+    MountainCar-v0            & $\mathbf{-104.7 \pm 6.3}$ & $-200.0 \pm 0.0$        & ---                       & ---               \\
+    MountainCarContinuous-v0  & ---                      & $0.0 \pm 0.0$            & $\mathbf{95.53 \pm 1.24}$   & $93.1 \pm 1.8$    \\
+    Pendulum-v1               & ---                      & $-975.4 \pm 73.4$         & $\mathbf{-114.55 \pm 70.38}$ & $-148.7 \pm 11.3$ \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -431,6 +411,16 @@ Second, the standard discount $\gamma = 0.99$ effectively hides the $+100$ termi
 
 \paragraph{Two hyperparameter changes are sufficient.}
 Both issues can be addressed without modifying the algorithm. We hold each warmup action for ten consecutive environment steps (\texttt{warmup\_action\_repeat}$=10$), which lets random actions accumulate enough momentum to actually escape the valley; this raises the per-episode goal-reach rate during warmup from $0\%$ to roughly $70\%$, so the buffer is seeded with informative transitions. We then raise the discount to $\gamma = 0.9999$, restoring the discounted goal value to $\approx 95$ and ensuring that the terminal bonus dominates the integrated action penalty.
+
+\subsubsection{Hyperparameter Sensitivity}
+
+We ran 143-trial Optuna sweeps of SAC on the two continuous-control environments in our benchmark. The swept set is identical across environments except that MountainCarContinuous-v0 also varies \texttt{warmup\_action\_repeat}, the knob from Section~\ref{sec:sac} used to seed the replay buffer with successful trajectories. Trials use the same training budget and three evaluation seeds as our final runs, and we report the mean undiscounted episodic return of the final policy.
+
+\paragraph{MountainCarContinuous-v0.}
+On this sparse-reward task only about 21 percent of trials cross our ``solved'' threshold of return $\geq 80$; the rest are stuck near zero. Three knobs separate the two regimes. First, \texttt{warmup\_action\_repeat} must sit in a narrow band: a value of 1 solves 0 of 29 trials, values of 5 or 10 solve roughly 28 percent each, and a value of 20 over-commits to a single direction and drops the success rate back to 10 percent. Second, the discount factor must lie in $\{0.999, 0.9999\}$, which solve 32 and 27 percent of trials respectively; the other settings we tested (0.99, 0.995, 0.9995, 0.99995) all collapse to a 0 percent solve rate. Third, a batch size of 128 beats 256 and 512 by a wide margin (28 percent versus 0 and 11), plausibly because smaller minibatches expose the buffer's rare goal-reaching transitions more often per gradient step. Outside of those three knobs SAC is essentially insensitive to the temperature $\alpha$, the learning rate, and the Polyak rate $\tau$ across the ranges swept. Once the buffer contains successful trajectories the 2-dimensional state space is easy enough that fine-grained optimizer choices stop mattering.
+
+\paragraph{Pendulum-v1.}
+With dense rewards the picture flips. About 48 percent of trials reach a loose ``good'' threshold of return $\geq -200$, and the sensitivity is concentrated on the optimization side rather than on exploration. Learning rate is the dominant knob: the lowest swept quartile (below roughly $3 \times 10^{-4}$) never crosses the threshold, while the upper three quartiles solve between 56 and 72 percent of trials. Counter-intuitively, lower discount factors work better here: the bottom quartile of the swept range (0.95 to 0.968) solves 66 percent of trials, the top quartile (0.983 to 0.999) only 31 percent. Pendulum episodes are 200 truncated steps with no real long-horizon credit, so larger $\gamma$ mostly inflates variance in the bootstrap target. The Polyak rate peaks in a narrow band of $\tau \in [0.004, 0.007]$ and degrades at either end; batch size 128 again beats 256 and 512; and a hidden dim of 128 beats both 64 (too small) and 256 (overparameterised for this short-horizon task). The entropy temperature $\alpha$ barely moves the result over two orders of magnitude, consistent with the SAC paper's claim that the method is robust to $\alpha$ once it is in a sensible range.
 
 
 
