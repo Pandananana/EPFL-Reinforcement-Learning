@@ -208,6 +208,7 @@ Acrobot combines the underactuated swing-up challenge of Pendulum with the highe
 %-----------------------------------------------------------------------------------------------------------
 \section{Algorithms}
 \subsection{Deep Q-Learning (DQN)}
+\label{sec:dqn}
 Deep Q-Learning (DQN) is a value-based, off-policy algorithm for discrete action spaces which was introduced by researchers at DeepMind in 2013 \citep{mnih2013playing} and further developed two years later \citep{mnih2015human} as a variant of Q-learning \citep{watkins1992q} based on deep neural networks. Although DQN was not the first algorithm to implement neural networks as function approximators in a reinforcement learning setting, it was the first one to do so in an efficient, end-to-end manner, solving most of the shortcomings of previous approaches like Tesauro's TD-gammon \citep{tesauro1995temporal}. 
 
 The main issues DQN addressed were sample correlation and the non-stationarity of the underlying distribution, which both arise from the fact that the data samples in a reinforcement learning setting are inherently correlated and the data distribution is subject to change while training the algorithm (as opposed to supervised learning where the data samples are assumed to be independent and coming from the same, fixed distribution). The algorithm circumvents these problems by implementing an experience replay buffer \citep{lin1992reinforcement} which allows the model to sample mini-batches of previous transitions randomly during the training procedure, thus eliminating the sample correlation and smoothing the data distribution over past experiences.
@@ -240,6 +241,7 @@ For the project we purposefully based our implementation on the original algorit
 \end{algorithm}
 
 \subsection{Twin Delayed Deep Deterministic Policy Gradient (TD3)}
+\label{sec:td3}
 Twin Delayed Deep Deterministic Policy Gradient is an off-policy actor-critic algorithm \citep{fujimoto2018addressing} for continuous action spaces which serves as an upgrade to the then state of the art actor-critic method Deep Deterministic Policy Gradient (DDPG) \citep{lillicrap2019continuouscontroldeepreinforcement}, building upon it while addressing its main shortcomings. The main problem TD3 addresses is overestimation bias which is a well documented property of Q-learning in discrete settings \citep{thrun2014issues} but also present in actor-critic methods, arising from the repeated maximization of noisy value estimates resulting in constant overestimation which is exacerbated by the bootstrapping nature of temporal difference learning. 
 
 TD3 aims to reduce the inherent overestimation bias by the introduction of "clipped double Q-learning" which entails the usage of two independent critic networks which are used in the Bellman update by taking the minimum of their output, thus binding the estimate for the value of the future state when updating the target (line 9, Algorithm \ref{alg:td3}). In addition to the implementation of the twin critics TD3 reduces the function approximation error by the application of target networks \citep{mnih2015human} and the novel idea of delayed policy updates which means updating the actor less frequently than the critics resulting in lower variance value updates and thus higher quality policy updates (line 10-13, in Algorithm \ref{alg:td3}). Last but not least TD3 tackles the problem inherent in DDPG and all methods equipped with deterministic policies, namely their tendency to overfit to narrow peaks in the value estimate, which is solved by a form of regularisation called target policy smoothing. This works similarly to the learning update used in SARSA \citep{sutton1998reinforcement}, by adding a tiny bit of random noise to the action selected by the target policy before showing it to the critic (line 8, Algorithm \ref{alg:td3}). The method reinforces the idea that similar actions should have similar values, by enforcing the critic to evaluate a small area around the target action instead of fixating on "narrow spikes", thus smootning the value estimate.
@@ -274,58 +276,23 @@ In our implementation of TD3 we stuck to the algorithm outlined in \citep{fujimo
 \subsection{Soft Actor-Critic (SAC)}
 \label{sec:sac}
 
-Soft Actor-Critic \citep{haarnoja2018soft} is an off-policy actor-critic algorithm for continuous action spaces, designed to combine the sample efficiency of off-policy value-based methods (e.g.\ DDPG) with the stability of stochastic on-policy policy gradients. It does so by optimising the \emph{maximum-entropy} reinforcement learning objective, which augments the expected return with the expected entropy of the policy:
+Soft Actor-Critic \citep{haarnoja2018soft} is an off-policy actor-critic algorithm for continuous action spaces. Like TD3 (Section~\ref{sec:td3}) it is trained off-policy from an experience replay buffer (Section~\ref{sec:dqn}) and uses clipped double-Q learning to curb the overestimation bias described there. Its distinctive feature is that it optimises the \emph{maximum-entropy} objective, which augments the expected return with the expected policy entropy:
 \begin{equation}
     J(\pi) \;=\; \sum_{t=0}^{T} \mathbb{E}_{(\mathbf{s}_t,\mathbf{a}_t)\sim \rho_\pi}
     \Big[\, r(\mathbf{s}_t,\mathbf{a}_t) \;+\; \alpha\,\mathcal{H}\!\left(\pi(\cdot\,|\,\mathbf{s}_t)\right) \,\Big],
     \label{eq:sac-objective}
 \end{equation}
-where the temperature $\alpha \ge 0$ trades off reward against entropy and recovers the standard RL objective as $\alpha \to 0$. The entropy bonus incentivises the policy to spread probability mass across all near-optimal actions, which improves exploration and yields policies that are robust to modelling errors \citep{ziebart2010thesis,haarnoja2017energy}.
+where the temperature $\alpha \ge 0$ trades off reward against entropy and recovers the standard RL objective as $\alpha \to 0$. Unlike the fixed additive action noise of TD3/DDPG, this entropy bonus gives SAC a \emph{built-in, state-dependent exploration mechanism}, spreading probability mass across near-optimal actions and yielding policies that are robust to modelling errors \citep{ziebart2010thesis,haarnoja2017energy}.
 
-\paragraph{Soft policy iteration.}
-SAC is derived from a maximum-entropy variant of policy iteration that alternates between \emph{soft policy evaluation} and \emph{soft policy improvement}. Evaluation applies the modified Bellman backup
-\begin{equation}
-    \mathcal{T}^\pi Q(\mathbf{s}_t,\mathbf{a}_t) \;\triangleq\;
-    r(\mathbf{s}_t,\mathbf{a}_t) + \gamma\,
-    \mathbb{E}_{\mathbf{s}_{t+1}\sim p}\!\left[V(\mathbf{s}_{t+1})\right],
-\end{equation}
-with soft state value $V(\mathbf{s}_t) = \mathbb{E}_{\mathbf{a}_t\sim\pi}\!\left[Q(\mathbf{s}_t,\mathbf{a}_t) - \log \pi(\mathbf{a}_t\,|\,\mathbf{s}_t)\right]$. Improvement then projects the policy onto the exponential of the new soft Q-function, which \citet{haarnoja2018soft} prove improves the soft value monotonically and converges to the optimum within a chosen policy class.
-
-\paragraph{Function approximators.}
-For continuous state-action spaces the tabular procedure is approximated with three neural networks: a soft state value $V_\psi(\mathbf{s})$, a soft Q-function $Q_\theta(\mathbf{s},\mathbf{a})$, and a tractable policy $\pi_\phi(\mathbf{a}\,|\,\mathbf{s})$. The policy is parameterised as a Gaussian whose mean and (log-)covariance are outputs of an MLP, with a $\tanh$ squashing function that bounds the sampled action to the valid range; log-probabilities are corrected for this change of variables. A separately parameterised \emph{target} value network $V_{\bar\psi}$ is maintained as an exponentially-moving average of $V_\psi$, with update rate $\tau$, to stabilise the Q-targets.
-
-\paragraph{Update rules.}
-The three networks are trained by stochastic gradient descent on minibatches $(\mathbf{s},\mathbf{a},r,\mathbf{s}')$ drawn from a replay buffer $\mathcal{D}$. The soft state-value network minimises the squared residual
-\begin{equation}
-    J_V(\psi) \;=\; \mathbb{E}_{\mathbf{s}\sim\mathcal{D}}
-    \!\left[\tfrac{1}{2}\big(V_\psi(\mathbf{s}) -
-        \mathbb{E}_{\mathbf{a}\sim\pi_\phi}\!\left[Q_\theta(\mathbf{s},\mathbf{a}) - \log \pi_\phi(\mathbf{a}\,|\,\mathbf{s})\right]\big)^2\right],
-    \label{eq:sac-v-loss}
-\end{equation}
-
-where the inner expectation is estimated with a single freshly-sampled action from the current policy. The soft Q-function is trained to minimise the soft Bellman residual
-
-\begin{equation}
-    J_Q(\theta) \;=\; \mathbb{E}_{(\mathbf{s},\mathbf{a})\sim\mathcal{D}}
-    \!\left[\tfrac{1}{2}\big(Q_\theta(\mathbf{s},\mathbf{a}) - \hat Q(\mathbf{s},\mathbf{a})\big)^2\right],
-    \quad
-    \hat Q(\mathbf{s},\mathbf{a}) = r(\mathbf{s},\mathbf{a}) + \gamma\, \mathbb{E}_{\mathbf{s}'\sim p}\!\left[V_{\bar\psi}(\mathbf{s}')\right],
-    \label{eq:sac-q-loss}
-\end{equation}
-i.e.\ against a bootstrap that uses the target value network; in practice the inner expectation is replaced by the next-state sample from the replay buffer. The policy parameters minimise the expected KL divergence between $\pi_\phi$ and the exponential of the Q-function; using the reparameterisation $\mathbf{a} = f_\phi(\epsilon;\mathbf{s})$ with $\epsilon$ drawn from a fixed noise distribution (e.g.\ a spherical Gaussian), the (partition-function-free) objective becomes
+\paragraph{Function approximators and updates.}
+SAC approximates the corresponding maximum-entropy policy iteration \citep{haarnoja2018soft} with a stochastic policy $\pi_\phi$ and a soft Q-function (here also a soft value $V_\psi$). The policy is a Gaussian whose mean and log-std are outputs of an MLP, with a $\tanh$ squashing that bounds the sampled action to the valid range and a matching change-of-variables correction to its log-probability. All networks are trained on minibatches $(\mathbf{s},\mathbf{a},r,\mathbf{s}')\sim\mathcal{D}$: the Q-function minimises a soft Bellman residual whose bootstrap target adds an entropy term to the next-state value and, as in TD3, takes $\min_{i=1,2} Q_{\theta_i}$ over twin critics to limit overestimation; the target value network is maintained as a Polyak-averaged copy (Section~\ref{sec:td3}). The policy minimises the expected KL divergence to the exponential of the Q-function; using the reparameterisation $\mathbf{a} = f_\phi(\epsilon;\mathbf{s})$ with $\epsilon$ drawn from a fixed noise distribution, this becomes the low-variance objective
 \begin{equation}
     J_\pi(\phi) \;=\; \mathbb{E}_{\mathbf{s}\sim\mathcal{D},\,\epsilon\sim\mathcal{N}}
     \!\left[\log \pi_\phi\!\left(f_\phi(\epsilon;\mathbf{s})\,|\,\mathbf{s}\right) -
-        Q_\theta\!\left(\mathbf{s},\,f_\phi(\epsilon;\mathbf{s})\right)\right],
+        Q_\theta\!\left(\mathbf{s},\,f_\phi(\epsilon;\mathbf{s})\right)\right].
     \label{eq:sac-pi-loss}
 \end{equation}
-which yields a low-variance gradient estimator. Finally, the target value network is updated by Polyak averaging, $\bar\psi \leftarrow \tau \psi + (1-\tau)\bar\psi$.
-
-\paragraph{Twin Q-functions.}
-To mitigate positive bias in the policy-improvement step, the algorithm maintains \emph{two} independently-initialised soft Q-networks $Q_{\theta_1}, Q_{\theta_2}$ trained on the same target, and uses $\min_{i=1,2} Q_{\theta_i}(\mathbf{s},\mathbf{a})$ in both the value-loss target (\ref{eq:sac-v-loss}) and the policy objective (\ref{eq:sac-pi-loss}) \citep{fujimoto2018addressing}. \citet{haarnoja2018soft} report that a single Q-function suffices to learn even the hardest benchmarks (including the 21-dimensional Humanoid), but that two Q-networks noticeably speed up training.
-
-\paragraph{Algorithm.}
-The resulting procedure (Algorithm~\ref{alg:sac}) alternates a single environment step under the current stochastic policy with one (or a few) gradient steps on $J_V$, $J_Q$, $J_\pi$, and a Polyak update of $V_{\bar\psi}$. Because the value and Q updates only require $(\mathbf{s},\mathbf{a},r,\mathbf{s}')$ tuples, the algorithm is fully off-policy and can reuse the entire replay buffer; the only on-policy quantities are the freshly-sampled actions used to form the value- and policy-loss targets.
+The full update (Algorithm~\ref{alg:sac}) alternates one environment step under the current stochastic policy with gradient steps on these losses and a Polyak update of the target network. Because the critic updates need only $(\mathbf{s},\mathbf{a},r,\mathbf{s}')$ tuples, SAC is fully off-policy and reuses the entire buffer; the only on-policy quantities are the freshly-sampled actions used to form the value- and policy-loss targets.
 
 \begin{algorithm}[t]
 \caption{Soft Actor-Critic \citep{haarnoja2018soft}}
