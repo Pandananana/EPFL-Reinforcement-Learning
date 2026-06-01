@@ -95,6 +95,10 @@
 
 In this report we re-implement and empirically compare four widely cited algorithms: DQN \citep{mnih2013playing}, PPO \citep{schulman2017proximal}, SAC \citep{haarnoja2018soft}, and TD3 \citep{fujimoto2018addressing}. They span value-based, on-policy policy-gradient, and off-policy actor-critic methods, and covering both discrete and continuous action spaces. We evaluate them on a set of classic OpenAI Gym control tasks (CartPole, Acrobot, MountainCar, MountainCarContinuous, and Pendulum).
 
+First, we give a quick overview of the used environments before outlining each implemented algorithm focusing on their novelties and the problems they address. Then, we present our results
+
+Since our main objective is to present our findings regarding the implementation and testing of the aforementioned models we would like to emphasize that part of this report. For further details on the inner workings of the algorithms please consult the referenced papers.
+
 \section{Environments}
 
 All five environments used in this report belong to the \emph{Classic Control} suite of the Gymnasium library \citep{towers2024gymnasium}, a maintained fork of OpenAI Gym. They cover many properties relevant to evaluating RL algorithms: discrete versus continuous action spaces, dense versus sparse rewards, low- versus higher-dimensional state spaces, and stable versus unstable dynamics.
@@ -111,9 +115,9 @@ Acrobot-v1 \citep{sutton1996generalization} is a two-link chain, fixed at the to
 
 %-----------------------------------------------------------------------------------------------------------
 \section{Algorithms}
-\subsection{Deep Q-Learning (DQN)}
+\subsection{Deep Q-Network (DQN)}
 \label{sec:dqn}
-Deep Q-Learning (DQN) is a value-based, off-policy algorithm for discrete action spaces which was introduced by researchers at DeepMind in 2013 \citep{mnih2013playing} and further developed two years later \citep{mnih2015human} as a variant of Q-learning \citep{watkins1992q} based on deep neural networks. Although DQN was not the first algorithm to implement neural networks as function approximators in a reinforcement learning setting, it was the first one to do so in an efficient, end-to-end manner, solving most of the shortcomings of previous approaches like Tesauro's TD-gammon \citep{tesauro1995temporal}. 
+Deep Q-Network (DQN) is a value-based, off-policy algorithm for discrete action spaces which was introduced by researchers at DeepMind in 2013 \citep{mnih2013playing} and further developed two years later \citep{mnih2015human} as a variant of Q-learning \citep{watkins1992q} based on deep neural networks. Although DQN was not the first algorithm to implement neural networks as function approximators in a reinforcement learning setting, it was the first one to do so in an efficient, end-to-end manner, solving most of the shortcomings of previous approaches like Tesauro's TD-gammon \citep{tesauro1995temporal}. 
 
 The main issues DQN addressed were sample correlation and the non-stationarity of the underlying distribution, which both arise from the fact that the data samples in a reinforcement learning setting are inherently correlated and the data distribution is subject to change while training the algorithm (as opposed to supervised learning where the data samples are assumed to be independent and coming from the same, fixed distribution). The algorithm circumvents these problems by implementing an experience replay buffer \citep{lin1992reinforcement} which allows the model to sample mini-batches of previous transitions randomly during the training procedure, thus eliminating the sample correlation and smoothing the data distribution over past experiences.
 
@@ -328,7 +332,7 @@ where $c_v$ and $c_e$ weight the value loss and entropy bonus. The entropy term 
 % \end{algorithmic}
 % \end{algorithm}
 
-\section{Results}
+\section{Results and Discussion}
 
 
 \subsection{Untuned Comparison}
@@ -351,7 +355,7 @@ In the continuous case (MountainCarContinuous-v0)(Figure~\ref{fig:compare-vanill
     \toprule
     Environment & DQN & PPO & SAC & TD3 \\
     \midrule
-    CartPole-v1               & TODO         & $\mathbf{500.0 \pm 0.0}$  & ---                       & ---               \\
+    CartPole-v1               & $491.34 \pm 16.7$         & $\mathbf{500.0 \pm 0.0}$  & ---                       & ---               \\
     Acrobot-v1                & $-86.4 \pm 8.2$          & $\mathbf-85.9 \pm 6.1$  & ---                       & ---               \\
     MountainCar-v0            & TODO & $-200.0 \pm 0.0$        & ---                       & ---               \\
     MountainCarContinuous-v0  & ---                      & $0.0 \pm 0.0$            & $\mathbf{95.53 \pm 1.24}$  & TODO    \\
@@ -360,8 +364,7 @@ In the continuous case (MountainCarContinuous-v0)(Figure~\ref{fig:compare-vanill
   \end{tabular}
 \end{table}
 
-\section{Discussion}
-
+\subsection{Deep Q-Network (DQN)}
 
 \subsection{Soft Actor-Critic (SAC)}
 
@@ -475,7 +478,7 @@ Our HPO experiments use a single training seed and 10 evaluation episodes per tr
 \end{figure}
 
 \subsection{PPO Hyperparameter Experiments}
-\subsubsection{One factor at a time}
+
 \begin{figure}[H]
     \centering
     \begin{subfigure}[b]{0.49\textwidth}
@@ -488,11 +491,14 @@ Our HPO experiments use a single training seed and 10 evaluation episodes per tr
     \begin{subfigure}[b]{0.49\textwidth}
         \centering
         \includegraphics[width=\linewidth]{Figure/PPO/CartPole-v1_2.png}
-        \caption{Clipping parameter ($\epsilon$)}
+        \caption{Clipping parameter ($\varepsilon$)}
         \label{fig:cartpole_clip_eps}
     \end{subfigure}
-
-    \caption{Effects of learning rate and clipping parameter on PPO performance in CartPole-v1. Results are averaged over three random seeds and smoothed using a moving average window of 10 episodes. Higher learning rates generally accelerate initial learning but may introduce greater variance, while different clipping values affect the trade-off between update stability and learning speed.}
+    \caption{PPO sensitivity to the learning rate and clipping parameter on CartPole-v1.
+    Once the learning rate exceeds $10^{-4}$, all settings converge to the optimal return,
+    indicating low sensitivity on this task; larger rates speed up early learning at the
+    cost of higher variance. Performance is likewise robust across clipping values, consistent
+    with PPO's design goal of stability once $\varepsilon$ lies in a sensible range.}
     \label{fig:cartpole_ppo_hyperparameters}
 \end{figure}
 
@@ -508,11 +514,13 @@ Our HPO experiments use a single training seed and 10 evaluation episodes per tr
     \begin{subfigure}[b]{0.49\textwidth}
         \centering
         \includegraphics[width=\linewidth]{Figure/PPO/Acrobot-v1_2.png}
-        \caption{Entropy coefficient}
+        \caption{Entropy coefficient ($c_e$)}
         \label{fig:acrobot_ent_coef}
     \end{subfigure}
-
-    \caption{Effects of learning rate and entropy coefficient on PPO performance in Acrobot-v1. Results are averaged over three random seeds and smoothed using a moving average window of 10 episodes. Different learning rates affect convergence speed and stability, while varying entropy coefficients influence the trade-off between exploration and exploitation during training.}
+    \caption{PPO sensitivity to the learning rate and entropy coefficient on Acrobot-v1.
+    A moderate learning rate ($3\times10^{-4}$) gives the best balance of convergence speed
+    and stability, while larger rates destabilise training. A small entropy bonus
+    ($c_e\approx0.01$) accelerates early exploration without degrading final performance.}
     \label{fig:acrobot_ppo_hyperparameters}
 \end{figure}
 
@@ -528,19 +536,22 @@ Our HPO experiments use a single training seed and 10 evaluation episodes per tr
     \begin{subfigure}[b]{0.49\textwidth}
         \centering
         \includegraphics[width=\linewidth]{Figure/PPO/Pendulum-v1_2.png}
-        \caption{Entropy coefficient}
+        \caption{GAE parameter ($\lambda$)}
         \label{fig:pendulum_gae_lambda}
     \end{subfigure}
-
-    \caption{Effects of learning rate and GAE parameter ($\lambda$) on PPO performance in Pendulum-v1. Results are averaged over three random seeds and smoothed using a moving average window of 10 episodes. The learning rate controls the magnitude of policy updates, while the GAE parameter ($\lambda$) affects the bias–variance trade-off in advantage estimation.}
+    \caption{PPO sensitivity to the learning rate and GAE parameter ($\lambda$) on Pendulum-v1.
+    Higher learning rates ($\geq10^{-3}$) learn faster on this dense-reward task, while
+    intermediate $\lambda\in[0.9,0.95]$ best balances the bias--variance trade-off in advantage
+    estimation; values near $1.0$ increase variance without improving the final return.}
     \label{fig:pendulum_ppo_hyperparameters}
 \end{figure}
+
 \begin{figure}[H]
     \centering
     \begin{subfigure}[b]{0.49\textwidth}
         \centering
         \includegraphics[width=\linewidth]{Figure/PPO/MountainCar-v0_1.png}
-        \caption{Entropy coefficient}
+        \caption{Entropy coefficient ($c_e$)}
         \label{fig:mountaincar_ent_coef}
     \end{subfigure}
     \hfill
@@ -559,10 +570,15 @@ Our HPO experiments use a single training seed and 10 evaluation episodes per tr
         \caption{Discount factor ($\gamma$)}
         \label{fig:mountaincar_gamma}
     \end{subfigure}
-
-    \caption{Effects of entropy coefficient, GAE parameter ($\lambda$), and discount factor ($\gamma$) on PPO performance in MountainCar-v0. Results are averaged over three random seeds and smoothed using a moving average window of 10 episodes. The entropy coefficient controls exploration, the GAE parameter ($\lambda$) adjusts the bias–variance trade-off in advantage estimation, and the discount factor ($\gamma$) determines the weighting of future rewards.}
+    \caption{PPO sensitivity to the entropy coefficient, GAE parameter ($\lambda$), and discount
+    factor ($\gamma$) on MountainCar-v0, the most sensitive environment in our study. Only a
+    non-zero entropy bonus ($c_e\geq0.01$) escapes the $-200$ failure mode by sustaining
+    exploration under sparse rewards; $\lambda=1.0$ (Monte Carlo returns) outperforms lower
+    values, and a high discount factor ($\gamma\geq0.99$) is required for adequate credit
+    assignment over the long horizon.}
     \label{fig:mountaincar_ppo_hyperparameters}
 \end{figure}
+
 \subsubsection{Random Search}
 
 \begin{figure}[H]
