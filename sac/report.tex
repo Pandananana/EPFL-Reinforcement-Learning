@@ -144,66 +144,19 @@ All five environments used in this report belong to the \emph{Classic Control} s
 \end{figure}
 
 \subsection{CartPole-v1}
-CartPole-v1 corresponds to the classical pole-balancing problem of Barto, Sutton, and Anderson \citep{barto1983neuronlike}. A pole is attached by an un-actuated joint to a cart that moves along a frictionless track, and the agent must keep the pole upright by pushing the cart left or right.
-
-
-
-The observation space is a 4-dimensional continuous vector containing the cart position, cart velocity, pole angle, and pole angular velocity. The action space is discrete with two actions: push left (0) or push right (1). The magnitude of the applied force is fixed, but the effective change in velocity depends on the current pole angle, since the pole's center of gravity shifts the energy required to move the cart.
-
-A reward of $+1$ is granted at every timestep, including the terminal one, so the return equals the episode length. An episode terminates if the pole tilts more than $\pm 12^\circ$ from vertical or if the cart leaves the $(-2.4, 2.4)$ range on the track. Episodes are truncated at 500 steps, which is also the maximum achievable return and the standard "solved" threshold. Initial states are sampled uniformly in $(-0.05, 0.05)$ for every state variable, making the start near-vertical but not exactly so.
-
-CartPole is the easiest environment in this benchmark: rewards are dense, the state space is small, and a near-optimal linear policy exists.
+CartPole-v1 \citep{barto1983neuronlike} requires keeping a pole upright on a cart by pushing left or right (discrete, 2 actions) given a 4-dimensional state. A reward of $+1$ per step makes the return equal the episode length, capped at the 500-step ``solved'' threshold. It is the easiest environment in our benchmark: dense rewards, a small state space, and a near-optimal linear policy.
 
 \subsection{MountainCar-v0}
-MountainCar-v0, introduced by Moore \citep{moore1990efficient}, places a car at the bottom of a sinusoidal valley. The car must reach a flag on top of the right hill, but its engine is too weak to climb the slope directly; the agent must learn to build momentum by rocking back and forth between the two hills.
-
-
-The observation space is 2-dimensional and contains the car's horizontal position (in $[-1.2, 0.6]$) and its velocity (in $[-0.07, 0.07]$). The action space is discrete with three actions: accelerate left (0), do nothing (1), or accelerate right (2). The dynamics are deterministic and given by
-\begin{align}
-v_{t+1} &= v_t + (a_t - 1) \cdot 0.001 - \cos(3 p_t) \cdot 0.0025, \\
-p_{t+1} &= p_t + v_{t+1},
-\end{align}
-where collisions with either end of the track are inelastic (velocity is set to zero).
-
-A reward of $-1$ is given at every timestep, so the agent is implicitly encouraged to reach the goal as quickly as possible. The episode terminates when the car's position is at least $0.5$, and is truncated after 200 steps. The starting position is sampled uniformly in $[-0.6, -0.4]$ with zero initial velocity.
-
-MountainCar is notoriously difficult for naive RL agents because the reward is effectively sparse: a random policy almost never reaches the goal within 200 steps, so the agent must explore effectively before any informative reward signal becomes available. This makes it a useful stress test for exploration strategies.
+MountainCar-v0 \citep{moore1990efficient} places a car in a valley that must reach a flag on the right hill, but its engine is too weak to climb directly; the agent must build momentum by rocking between the hills. The state is 2-dimensional (position, velocity) and the action is discrete (accelerate left, none, right), with a reward of $-1$ per step and a 200-step truncation. Its defining property is an effectively sparse reward: a random policy almost never reaches the goal within 200 steps, so MountainCar is a stress test for exploration.
 
 \subsection{MountainCarContinuous-v0}
-MountainCarContinuous-v0 is the continuous-action variant of the Mountain Car problem. The state space and physical setup are identical to MountainCar-v0, but the action space is a continuous interval $[-1, 1]$ representing the directional force applied to the car. The applied force is the action multiplied by a constant power of $0.0015$, and the dynamics become
-\begin{align}
-v_{t+1} &= v_t + a_t \cdot 0.0015 - 0.0025 \cdot \cos(3 p_t), \\
-p_{t+1} &= p_t + v_{t+1}.
-\end{align}
-
-The reward structure differs meaningfully from the discrete version. At each timestep the agent receives a penalty of $-0.1 \cdot a_t^2$ to discourage large actions, and a one-off bonus of $+100$ is added when the car reaches the goal position ($\geq 0.45$). Episodes are truncated after 999 steps. The starting position is uniform in $[-0.6, -0.4]$ and the initial velocity is zero.
-
-This environment shares the exploration challenge of its discrete counterpart but compounds it with a credit-assignment problem: aggressive action use is locally penalized, yet such actions are necessary to escape the valley. It is the only environment in this study where exploration must be performed in a continuous action space.
+MountainCarContinuous-v0 shares the physical setup of MountainCar-v0 but replaces the discrete action with a continuous force in $[-1, 1]$. Its reward also differs: a per-step penalty of $-0.1\,a_t^2$ discourages large actions, while a one-off $+100$ bonus is granted on reaching the goal, over a 999-step horizon. This combines the exploration challenge of its discrete counterpart with a credit-assignment problem---aggressive actions are locally penalized yet necessary to escape the valley---and is the only environment here where exploration happens in a continuous action space.
 
 \subsection{Pendulum-v1}
-Pendulum-v1 is the classical inverted pendulum swing-up problem. A pendulum attached at one end to a fixed pivot starts in a random orientation, and the agent must apply torque at the joint to bring it to and hold it in the upright position.
-
-
-
-
-The observation space is 3-dimensional and contains $\cos(\theta)$, $\sin(\theta)$, and the angular velocity $\dot{\theta} \in [-8, 8]$, where $\theta$ is the pendulum's angle. Encoding the angle through its sine and cosine avoids discontinuities at $\pm\pi$. The action space is a continuous torque in $[-2, 2]$ N·m, positive counter-clockwise.
-
-The reward at each step is
-\[
-r_t = -\left(\theta_t^2 + 0.1\,\dot{\theta}_t^2 + 0.001\,\tau_t^2\right),
-\]
-with $\theta$ normalized to $[-\pi, \pi]$ (zero being upright). The maximum per-step reward is $0$ (upright, motionless, no torque) and the minimum is approximately $-16.27$. Episodes have no termination condition and are always truncated at 200 steps. The initial state samples $\theta$ uniformly from $[-\pi, \pi]$ and $\dot{\theta}$ from $[-1, 1]$.
-
-Unlike Mountain Car, the reward is dense and informative everywhere in the state space. The challenge is the underactuated dynamics: the maximum torque is insufficient to lift the pendulum directly, so the agent must learn to pump energy through repeated swings before stabilizing at the top.
+Pendulum-v1 is the classical swing-up problem: starting from a random orientation, the agent applies a continuous torque in $[-2, 2]$ N·m to bring the pendulum upright and hold it there. The 3-dimensional state encodes the angle as $(\cos\theta, \sin\theta)$ together with the angular velocity, and the per-step reward quadratically penalizes deviation from upright, angular speed, and torque, over a 200-step horizon with no termination. The reward is dense everywhere; the challenge is the underactuated dynamics, as the maximum torque cannot lift the pendulum directly and the agent must pump energy through repeated swings before stabilizing.
 
 \subsection{Acrobot-v1}
-Acrobot-v1, based on Sutton's formulation \citep{sutton1996generalization}, consists of two links connected linearly to form a chain. The upper end of the chain is fixed and the joint between the two links is actuated. Starting from a downward-hanging position, the agent must swing the free tip above a target height, equivalent to the length of one link above the pivot.
-
-The observation space is 6-dimensional and contains $\cos(\theta_1)$, $\sin(\theta_1)$, $\cos(\theta_2)$, $\sin(\theta_2)$, and the two angular velocities $\dot{\theta}_1 \in [-4\pi, 4\pi]$ and $\dot{\theta}_2 \in [-9\pi, 9\pi]$. Here $\theta_1$ is the angle of the first link from vertical-down and $\theta_2$ is the angle of the second link relative to the first. The action space is discrete with three values, corresponding to applying torque of $-1$, $0$, or $+1$ N·m at the actuated joint.
-
-A reward of $-1$ is given at each step until the goal is reached, at which point the episode terminates with a final reward of $0$. The termination condition is $-\cos(\theta_1) - \cos(\theta_1 + \theta_2) > 1.0$. Episodes are truncated at 500 steps, and the reward threshold for "solving" the task is $-100$. Each component of the underlying state is initialized uniformly in $[-0.1, 0.1]$, so the system starts essentially hanging straight down with small perturbations.
-
-Acrobot combines the underactuated swing-up challenge of Pendulum with the higher-dimensional state space and discrete actions of CartPole, making it a useful intermediate test case in this benchmark.
+Acrobot-v1 \citep{sutton1996generalization} is a two-link chain, fixed at the top with the middle joint actuated, that must swing its free tip above a target height from a downward-hanging start. The 6-dimensional state encodes both link angles (as sine/cosine pairs) and their angular velocities, and the action is a discrete torque ($-1$, $0$, or $+1$ N·m) at the joint, with a reward of $-1$ per step until the goal terminates the episode. It combines the underactuated swing-up of Pendulum with the higher-dimensional state and discrete actions of CartPole, making it a useful intermediate test case.
 
 %-----------------------------------------------------------------------------------------------------------
 \section{Algorithms}
